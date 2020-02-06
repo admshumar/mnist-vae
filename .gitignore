@@ -1,0 +1,5 @@
+models/vae_mlp
+.idea
+tensorboard.sh
+.DS_Store
+data/images
