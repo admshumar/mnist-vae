@@ -1,4 +1,4 @@
-models/vae_mlp
+models/scratch.py
 .idea
 tensorboard.sh
 .DS_Store
