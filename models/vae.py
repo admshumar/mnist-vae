@@ -186,10 +186,7 @@ class VariationalAutoencoder:
         """
         output_directory = os.path.abspath(os.path.join(os.getcwd(), '..', 'data', 'images', hyper_parameter_string))
         if not os.path.exists(output_directory):
-            print('foo')
             os.makedirs(output_directory)
-            if os.path.exists(output_directory):
-                print('bar')
         return output_directory
 
     @classmethod
@@ -251,7 +248,7 @@ class VariationalAutoencoder:
         loss = y_true-y_pred
         loss = k.flatten(loss)
         loss = k.square(loss)
-        loss = k.sum(loss)
+        loss = k.mean(loss)
         return loss
 
     @classmethod
@@ -425,7 +422,7 @@ class VariationalAutoencoder:
                                      self.latent_dim]
 
         if self.is_mnist:
-            self.hyper_parameter_list.append("synthetic")
+            self.hyper_parameter_list.append("mnist")
 
         if self.is_restricted:
             restriction_label_string = ''
