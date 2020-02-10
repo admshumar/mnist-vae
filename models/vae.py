@@ -104,15 +104,6 @@ class VariationalAutoencoder:
 
     @classmethod
     @tensorflow.function
-    def encoding_loss(cls, z_mean, z_logarithmic_covariance):
-        kullback_leibler_divergence_vector = \
-            -1 - z_logarithmic_covariance \
-            + tensorflow.keras.backend.square(z_mean) + tensorflow.keras.backend.exp(z_logarithmic_covariance)
-        kullback_leibler_divergence = tensorflow.keras.backend.sum(kullback_leibler_divergence_vector) # 0.5 *
-        return kullback_leibler_divergence
-
-    @classmethod
-    @tensorflow.function
     def evidence_lower_bound(cls, inputs, outputs, z_mean, z_logarithmic_covariance,
                              approximate_reconstruction_loss=True):
         """
@@ -184,7 +175,7 @@ class VariationalAutoencoder:
         Make an output directory indexed by a set of hyperparameters.
         :return: A string corresponding to the output directory.
         """
-        output_directory = os.path.abspath(os.path.join(os.getcwd(), '..', 'data', 'images', hyper_parameter_string))
+        output_directory = os.path.abspath(os.path.join(os.getcwd(), '..', 'data', 'experiments', hyper_parameter_string))
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
         return output_directory
@@ -216,6 +207,19 @@ class VariationalAutoencoder:
         return x_train, y_train, x_test, y_test
 
     @classmethod
+    def get_gaussian_parameters(cls, data):
+        """
+        Grab the TensorFlow Keras incarnation of the MNIST data set.
+        :return: A NumPy array of MNIST training and test sets.
+        """
+        mean_array = np.zeros(shape=(len(data), 2))
+        covariance_array = np.ones(shape=(len(data), 2))
+        # parameter_array = np.concatenate((mean_array, covariance_array), axis=1)
+        # parameter_array = parameter_array.reshape((len(data), 2, 2))
+
+        return mean_array, covariance_array
+
+    @classmethod
     def split_data(cls, data,
                    label_index,
                    random_state=17,
@@ -245,6 +249,12 @@ class VariationalAutoencoder:
 
     @classmethod
     def approximate_reconstruction_loss(cls, y_true, y_pred):
+        """
+        Compute the mean squared error approximation to the reconstruction loss.
+        :param y_true: A Keras tensor of MNIST digits.
+        :param y_pred: A Keras tensor of digits predicted by the variational autoencoder.
+        :return: A float indicating the approximate reconstruction loss.
+        """
         loss = y_true-y_pred
         loss = k.flatten(loss)
         loss = k.square(loss)
@@ -260,7 +270,7 @@ class VariationalAutoencoder:
         :param y_pred: A Keras tensor consisting of the parameters of an arbitrary multivariate Gaussian, which is
             parametrized by the encoder model and thus represents the approximate posterior of the variational
             autoencoder's generative model.
-        :return: A float indicating the loss value.
+        :return: A float indicating the encoding loss.
         """
         mean = y_pred[0]
         logarithmic_covariance = y_pred[1]
@@ -359,8 +369,7 @@ class VariationalAutoencoder:
             self.data_width, self.data_height = self.x_train.shape[1], self.x_train.shape[2]
             self.data_dimension = self.data_width * self.data_height
             self.x_train, self.x_test = VariationalAutoencoder.normalize(self.x_train, self.x_test)
-            # self.x_train, self.x_test = VariationalAutoencoder.reshape_for_convolution(self.x_train, self.x_test,)
-        # else: get other data . . . implement later
+            self.mean_array, self.covariance_array = VariationalAutoencoder.get_gaussian_parameters(self.x_train)
 
         self.x_train_length = len(self.x_train)
         self.x_test_length = len(self.x_test)
@@ -373,7 +382,6 @@ class VariationalAutoencoder:
         """
         Hyperparameters for the neural network.
         """
-        self.encoder_input_shape = self.x_train.shape[1:]
         self.number_of_epochs = number_of_epochs
 
         if self.enable_stochastic_gradient_descent:
@@ -393,12 +401,7 @@ class VariationalAutoencoder:
         self.patience_limit = self.number_of_epochs // 10
         self.early_stopping_delta = early_stopping_delta
 
-        if self.has_custom_layers:
-            self.power_sequence = [self.data_dimension, 48, 24, 4]
-        else:
-            self.power_sequence = self.get_power_sequence(self.data_dimension, self.exponent_of_latent_space_dimension)
-
-        self.latent_dim = self.power_sequence[-1]
+        self.latent_dim = 2
 
         self.beta = max(beta, 1)
         if self.beta > 1:
@@ -446,9 +449,16 @@ class VariationalAutoencoder:
         self.image_directory = os.path.join('images', self.directory)
 
         """
-        Tensorflow Input tensor for input into the encoder model.
+        Tensorflow Input instances for declaring model inputs.
         """
-        self.encoder_input = Input(shape=self.encoder_input_shape, name='encoder_input')
+        self.mnist_shape = self.x_train.shape[1:]
+        self.gaussian_shape = self.latent_dim
+        self.encoder_gaussian_mean = Input(shape=self.gaussian_shape, name='enc_gaussian_mean')
+        self.encoder_gaussian_covariance = Input(shape=self.gaussian_shape, name='enc_gaussian_covariance')
+        self.encoder_mnist_input = Input(shape=self.mnist_shape, name='enc_mnist')
+        self.auto_encoder_gaussian_mean = Input(shape=self.gaussian_shape, name='ae_gaussian_mean')
+        self.auto_encoder_gaussian_covariance = Input(shape=self.gaussian_shape, name='ae_gaussian_covariance')
+        self.auto_encoder_mnist_input = Input(shape=self.mnist_shape, name='ae_mnist')
 
         """
         Callbacks to TensorBoard for observing the model structure and network training curves.
@@ -482,7 +492,7 @@ class VariationalAutoencoder:
         sys.stdout.close()
 
     def define_encoder(self):
-        z = self.encoder_input
+        z = self.encoder_mnist_input
         z = Reshape((28, 28, 1,))(z)
 
         z = Conv2D(filters=8,
@@ -490,7 +500,7 @@ class VariationalAutoencoder:
                    padding="same",
                    strides=(2, 2),
                    activation=self.encoder_activation,
-                   input_shape=self.encoder_input_shape)(z)
+                   input_shape=self.mnist_shape)(z)
         z = BatchNormalization(axis=-1, epsilon=1e-5)(z)
 
         z = Conv2D(filters=16,
@@ -498,27 +508,38 @@ class VariationalAutoencoder:
                    padding="same",
                    strides=(2, 2),
                    activation=self.encoder_activation,
-                   input_shape=self.encoder_input_shape)(z)
+                   input_shape=self.mnist_shape)(z)
         z = BatchNormalization(axis=-1, epsilon=1e-5)(z)
 
         z = Flatten()(z)
         z = Dense(20, activation=self.encoder_activation)(z)
         z = BatchNormalization(epsilon=1e-5)(z)
 
-        z_mean = Dense(2, activation=self.encoder_activation)(z)
-        z_logarithmic_covariance = Dense(2, activation=self.encoder_activation)(z)
-        z = Lambda(VariationalAutoencoder.reparametrize_and_sample)([z_mean, z_logarithmic_covariance])
+        z_mean = Dense(2, activation=self.encoder_activation, name="mu")(z)
+        z_logarithmic_covariance = Dense(2, activation=self.encoder_activation, name="log_sigma")(z)
+        z = Lambda(VariationalAutoencoder.reparametrize_and_sample,
+                   name="reparametrization_trick")([z_mean, z_logarithmic_covariance])
         encoder_output = [z_mean, z_logarithmic_covariance, z]
 
-        encoder = Model(self.encoder_input, encoder_output, name='encoder')
+        encoder = Model([self.encoder_gaussian_mean,
+                         self.encoder_gaussian_covariance,
+                         self.encoder_mnist_input], encoder_output, name='encoder')
         encoder.summary()
         plot_model(encoder, to_file=os.path.join(self.image_directory, 'encoder.png'), show_shapes=True)
 
-        return encoder, z
+        return encoder, [z_mean, z_logarithmic_covariance, z]
 
-    def define_decoder(self, z):
-        decoder_input = Input(shape=z.shape[1:], name='decoder_input')
-        x = decoder_input
+    def define_decoder(self, encoder_output):
+        decoder_mean_input = Input(shape=encoder_output[1].shape[1:], name='mean_input')
+        decoder_covariance_input = Input(shape=encoder_output[2].shape[1:], name='covariance_input')
+        decoder_latent_input = Input(shape=encoder_output[0].shape[1:], name='latent_input')
+        x = decoder_latent_input
+        mean = decoder_mean_input
+        covariance = decoder_covariance_input
+
+        trivial_lambda = Lambda(lambda w: w, name="trivial_lambda")
+        mean = trivial_lambda(mean)
+        covariance = trivial_lambda(covariance)
 
         x = Dense(784, activation=self.decoder_activation)(x)
         x = BatchNormalization(epsilon=1e-5)(x)
@@ -537,14 +558,20 @@ class VariationalAutoencoder:
                             padding="same",
                             activation=self.decoder_activation)(x)
         x = BatchNormalization(epsilon=1e-5)(x)
+
         x = Conv2DTranspose(filters=1,
                             kernel_size=(3, 3),
                             padding="same",
                             activation=self.decoder_activation,
                             name='decoder_output')(x)
         x = Reshape((28, 28))(x)
-        decoder_output = x
-        decoder = Model(decoder_input, decoder_output, name='decoder')
+
+        decoder_output = [mean, covariance, x]
+        decoder = Model([decoder_mean_input,
+                         decoder_covariance_input,
+                         decoder_latent_input],
+                        decoder_output,
+                        name='decoder')
         decoder.summary()
         plot_model(decoder, to_file=os.path.join(self.image_directory, 'decoder.png'), show_shapes=True)
 
@@ -556,9 +583,11 @@ class VariationalAutoencoder:
         encoder, z = self.define_encoder()
         decoder = self.define_decoder(z)
 
-        auto_encoder_input = self.encoder_input
-        latent_space_input = encoder(auto_encoder_input)[2]
-        auto_encoder_output = decoder(latent_space_input)#, tensorflow.expand_dims(encoder_output, -1)
+        auto_encoder_input = [self.auto_encoder_gaussian_mean,
+                              self.auto_encoder_gaussian_covariance,
+                              self.auto_encoder_mnist_input]
+        latent_space_input = encoder(auto_encoder_input)
+        auto_encoder_output = decoder(latent_space_input)
         auto_encoder = Model(auto_encoder_input, auto_encoder_output, name='variational_auto_encoder')
 
         # reconstruction_loss = MeanSquaredError(auto_encoder_input, auto_encoder_output)
@@ -573,16 +602,12 @@ class VariationalAutoencoder:
 
     def fit_autoencoder(self):
         """
-        Data normalizations.
-        """
-        if self.is_standardized:
-            x_train = VariationalAutoencoder.standardize(self.x_train, self.x_train)
-            x_test = VariationalAutoencoder.standardize(self.x_test, self.x_train)
-        else:
-            x_train, x_test = self.x_train, self.x_test
 
+        :return:
+        """
         auto_encoder, encoder, decoder = self.define_autoencoder()
-        history = auto_encoder.fit(x_train,
+        history = auto_encoder.fit([self.mean_array, self.covariance_array, self.x_train],
+                                   [self.mean_array, self.covariance_array, self.x_train],
                                    epochs=self.number_of_epochs,
                                    batch_size=self.batch_size,
                                    callbacks=[self.tensorboard_callback])
@@ -611,9 +636,9 @@ class VariationalAutoencoder:
         # data = samples in the latent space.
         # return self.predict(decoder, data)
 
-    def save_all_models(self, autoencoder, encoder, decoder):
+    def save_model_weights(self, autoencoder, encoder, decoder):
         """
-        Save the parameters of the autoencoder, encoder, and decoder (respectively) to .h5 files.
+        Save the weights of the autoencoder, encoder, and decoder (respectively) to .h5 files.
         :param autoencoder: A Keras model, in this case an autoencoder.
         :param encoder: A Keras model, in this case an encoder.
         :param decoder: A Keras model, in this case a decoder.
@@ -622,14 +647,72 @@ class VariationalAutoencoder:
         model_directory = os.path.join(self.image_directory, 'models')
         if not os.path.exists(model_directory):
             os.makedirs(model_directory)
-        save_model(autoencoder, os.path.join(model_directory, 'autoencoder.h5'))
-        save_model(encoder, os.path.join(model_directory, 'encoder.h5'))
-        save_model(decoder, os.path.join(model_directory, 'decoder.h5'))
+        autoencoder.save_weights(os.path.join(model_directory, 'autoencoder.h5'))
+        encoder.save_weights(os.path.join(model_directory, 'encoder.h5'))
+        decoder.save_weights(os.path.join(model_directory, 'decoder.h5'))
+
+    def plot_results(self, models, batch_size=128, model_name="vae_mnist"):
+        """Plots labels and MNIST digits as a function of the 2D latent vector
+
+        # Arguments
+            models (tuple): encoder and decoder models
+            data (tuple): test data and label
+            batch_size (int): prediction batch size
+            model_name (string): which model is using this function
+        """
+        encoder, decoder = models
+        test_mean, test_covariance = VariationalAutoencoder.get_gaussian_parameters(self.x_test)
+        os.makedirs(self.image_directory, exist_ok=True)
+        filename = os.path.join(self.image_directory, "vae_mean.png")
+
+        # display a 2D plot of the digit classes in the latent space
+        z_mean, z_covariance, z_mnist = encoder.predict([test_mean, test_covariance, self.x_test], batch_size=batch_size)
+        plt.figure(figsize=(12, 10))
+        plt.scatter(z_mean[:, 0], z_mean[:, 1], c=self.y_test)
+        plt.colorbar()
+        plt.xlabel("z[0]")
+        plt.ylabel("z[1]")
+        plt.savefig(filename)
+        plt.show()
+
+        filename = os.path.join(self.image_directory, "digits_over_latent.png")
+        # display a 30x30 2D manifold of digits
+        n = 30
+        digit_size = 28
+        figure = np.zeros((digit_size * n, digit_size * n))
+        # linearly spaced coordinates corresponding to the 2D plot
+        # of digit classes in the latent space
+        grid_x = np.linspace(-4, 4, n)
+        grid_y = np.linspace(-4, 4, n)[::-1]
+
+        for i, yi in enumerate(grid_y):
+            for j, xi in enumerate(grid_x):
+                z_mean = np.array([[0, 0]])
+                z_covariance = np.array([[1, 1]])
+                z_sample = np.array([[xi, yi]])
+                x_decoded = decoder.predict([z_mean, z_covariance, z_sample])
+                digit = x_decoded[2].reshape(digit_size, digit_size)
+                figure[i * digit_size: (i + 1) * digit_size,
+                j * digit_size: (j + 1) * digit_size] = digit
+
+        plt.figure(figsize=(10, 10))
+        start_range = digit_size // 2
+        end_range = (n - 1) * digit_size + start_range + 1
+        pixel_range = np.arange(start_range, end_range, digit_size)
+        sample_range_x = np.round(grid_x, 1)
+        sample_range_y = np.round(grid_y, 1)
+        plt.xticks(pixel_range, sample_range_x)
+        plt.yticks(pixel_range, sample_range_y)
+        plt.xlabel("z[0]")
+        plt.ylabel("z[1]")
+        plt.imshow(figure, cmap='Greys_r')
+        plt.savefig(filename)
+        plt.show()
 
     def train(self):
         """
-        Train the autoencoder, use its history to plot loss curves, and save the parameters of the autoencoder, encoder,
-        and decoder (respectively) to .h5 files.
+        Begin logging, train the autoencoder, use the autoencoder's history to plot loss curves, and save the parameters
+        of the autoencoder, encoder, and decoder (respectively) to .h5 files.
         :return: None
         """
         self.begin_logging()
@@ -638,7 +721,9 @@ class VariationalAutoencoder:
 
         VariationalAutoencoder.plot_loss_curves(history, self.image_directory)
 
-        self.save_all_models(auto_encoder, encoder, decoder)
+        self.save_model_weights(auto_encoder, encoder, decoder)
+
+        self.plot_results((encoder, decoder))
 
 
 vae = VariationalAutoencoder(number_of_epochs=5).train()

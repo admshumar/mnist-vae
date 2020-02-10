@@ -1,18 +1,10 @@
-import os
+import numpy as np
 
-hyper_parameter_string = "foo"
+n = 30
+grid_x = np.linspace(-4, 4, n)
+grid_y = np.linspace(-4, 4, n)[::-1]
 
-def make_output_directory(hyper_parameter_string):
-    """
-    Make an output directory indexed by a set of hyperparameters.
-    :return: A string corresponding to the output directory.
-    """
-    base_output_directory = os.getcwd().split('/')
-    base_output_directory = base_output_directory[:-1]
-    base_output_directory.append('data')
-    base_output_directory = '/'.join(base_output_directory)
-
-    better_dir = os.path.abspath(os.path.join(os.getcwd(), '..', hyper_parameter_string))
-    print(better_dir)
-
-make_output_directory(hyper_parameter_string)
+for i, yi in enumerate(grid_y):
+    for j, xi in enumerate(grid_x):
+        z_sample = np.array([[xi, yi]])
+        print(z_sample)
