@@ -637,8 +637,8 @@ class VariationalAutoencoder:
         figure = np.zeros((digit_size * n, digit_size * n))
         # linearly spaced coordinates corresponding to the 2D plot
         # of digit classes in the latent space
-        grid_x = np.linspace(-4, 4, n)
-        grid_y = np.linspace(-4, 4, n)[::-1]
+        grid_x = np.linspace(-0.5, 0.5, n)
+        grid_y = np.linspace(-0.5, 0.5, n)[::-1]
 
         for i, yi in enumerate(grid_y):
             for j, xi in enumerate(grid_x):
