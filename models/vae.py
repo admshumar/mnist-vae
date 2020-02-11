@@ -2,13 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import itertools
 import os
 import sys
-
 import numpy as np
-
 import tensorflow
+
 import tensorflow.keras.backend as k
 from tensorflow.keras import regularizers, optimizers
 from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ReduceLROnPlateau
@@ -69,6 +67,28 @@ class VariationalAutoencoder:
         return standardized_matrix
 
     @classmethod
+    def get_gaussian_parameters(cls, data):
+        """
+        Grab the TensorFlow Keras incarnation of the MNIST data set.
+        :return: A NumPy array of MNIST training and test sets.
+        """
+        mean_array = np.zeros(shape=(len(data), 2))
+        covariance_array = np.ones(shape=(len(data), 2))
+        gaussian_parameters = np.concatenate((mean_array, covariance_array), axis=-1)
+        return gaussian_parameters
+
+    @classmethod
+    def split_gaussian_parameters(cls, data):
+        """
+        Grab the TensorFlow Keras incarnation of the MNIST data set.
+        :return: A NumPy array of MNIST training and test sets.
+        """
+        gaussian_parameters = VariationalAutoencoder.get_gaussian_parameters(data)
+        dimension = gaussian_parameters.shape[1] // 2
+        mean, logarithmic_covariance = gaussian_parameters[:, 0:dimension], gaussian_parameters[:, dimension:]
+        return mean, logarithmic_covariance
+
+    @classmethod
     def reparametrize_and_sample(cls, gaussian_parameters):
         """
         The given mean and logarithmic covariance are regarded as parameters for an isotropic Gaussian. Sampling from
@@ -78,51 +98,12 @@ class VariationalAutoencoder:
         :param gaussian_parameters: A List of NumPy arrays, consisting of the mean and covariance of a Gaussian.
         :return: A NumPy array representing a set of samples drawn from a reparametrized isotropic Gaussian.
         """
-        mean, logarithmic_covariance = gaussian_parameters[0], gaussian_parameters[1]
+        dimension = gaussian_parameters.shape[1] // 2
+        mean, logarithmic_covariance = gaussian_parameters[:, 0:dimension], gaussian_parameters[:, dimension:]
         standard_deviation = tensorflow.keras.backend.exp(0.5 * logarithmic_covariance)
-        shape = tensorflow.shape(mean)  # NOT mean.shape
+        shape = tensorflow.shape(mean)
         epsilon = tensorflow.keras.backend.random_normal(shape)
         return mean + epsilon * standard_deviation
-
-    @classmethod
-    @tensorflow.function
-    def reconstruction_loss(cls,
-                            inputs,
-                            outputs,
-                            # x_mean,
-                            # x_logarithmic_covariance,
-                            approximate_reconstruction_loss=True):
-        batch_size, width, height = inputs.shape[0], inputs.shape[1], inputs.shape[2]
-        inputs = Reshape((width * height,))(inputs)
-        outputs = Reshape((width * height,))(outputs)
-        if approximate_reconstruction_loss:
-            loss_vector = mean_squared_error(inputs, outputs)
-            loss = tensorflow.keras.backend.mean(loss_vector)
-            return loss
-        # else:
-            # implement later
-
-    @classmethod
-    @tensorflow.function
-    def evidence_lower_bound(cls, inputs, outputs, z_mean, z_logarithmic_covariance,
-                             approximate_reconstruction_loss=True):
-        """
-        Compute the evidence lower bound of a variational autoencoder (more generally a beta-VAE for beta > 1).
-        :param inputs:
-        :param outputs:
-        :param z_mean:
-        :param z_logarithmic_covariance:
-        :param approximate_reconstruction_loss:
-        :param beta:
-        :return:
-        """
-        reconstruction_loss = VariationalAutoencoder.reconstruction_loss(inputs, outputs,
-                                                                         # x_mean,
-                                                                         # x_logarithmic_covariance,
-                                                                         approximate_reconstruction_loss)
-        kullback_leibler_divergence = VariationalAutoencoder.encoding_loss(z_mean,
-                                                                           z_logarithmic_covariance)
-        return reconstruction_loss - kullback_leibler_divergence
 
     @classmethod
     def normalize(cls, x_train, x_test):
@@ -207,19 +188,6 @@ class VariationalAutoencoder:
         return x_train, y_train, x_test, y_test
 
     @classmethod
-    def get_gaussian_parameters(cls, data):
-        """
-        Grab the TensorFlow Keras incarnation of the MNIST data set.
-        :return: A NumPy array of MNIST training and test sets.
-        """
-        mean_array = np.zeros(shape=(len(data), 2))
-        covariance_array = np.ones(shape=(len(data), 2))
-        # parameter_array = np.concatenate((mean_array, covariance_array), axis=1)
-        # parameter_array = parameter_array.reshape((len(data), 2, 2))
-
-        return mean_array, covariance_array
-
-    @classmethod
     def split_data(cls, data,
                    label_index,
                    random_state=17,
@@ -272,13 +240,16 @@ class VariationalAutoencoder:
             autoencoder's generative model.
         :return: A float indicating the encoding loss.
         """
-        mean = y_pred[0]
-        logarithmic_covariance = y_pred[1]
+        mean = y_pred[:, 0:2]
+        logarithmic_covariance = y_pred[:, 2:]
         kullback_leibler_divergence_vector = \
             -1 - logarithmic_covariance \
             + tensorflow.keras.backend.square(mean) + tensorflow.keras.backend.exp(logarithmic_covariance)
-        kullback_leibler_divergence = tensorflow.keras.backend.sum(kullback_leibler_divergence_vector)
+        kullback_leibler_divergence = tensorflow.keras.backend.sum(kullback_leibler_divergence_vector, axis=-1)
         kullback_leibler_divergence = 0.5 * kullback_leibler_divergence
+
+        # kl_loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
+        # kl_loss = K.sum(kl_loss, axis=-1)
         return kullback_leibler_divergence
 
     def __init__(self,
@@ -297,13 +268,14 @@ class VariationalAutoencoder:
                  show_representations=False,
                  number_of_epochs=5,
                  batch_size=128,
-                 learning_rate_initial=1e-3,
+                 learning_rate_initial=1e-5,
                  learning_rate_minimum=1e-6,
                  enable_batch_normalization=True,
                  enable_dropout=True,
                  enable_activation=True,
                  encoder_activation='relu',  # 'relu', 'tanh', 'elu', 'softmax', 'sigmoid'
-                 decoder_activation='tanh',
+                 decoder_activation='relu',
+                 final_activation='sigmoid',
                  dropout_rate=0.5,
                  l2_constant=1e-4,
                  early_stopping_delta=0.1,
@@ -369,7 +341,7 @@ class VariationalAutoencoder:
             self.data_width, self.data_height = self.x_train.shape[1], self.x_train.shape[2]
             self.data_dimension = self.data_width * self.data_height
             self.x_train, self.x_test = VariationalAutoencoder.normalize(self.x_train, self.x_test)
-            self.mean_array, self.covariance_array = VariationalAutoencoder.get_gaussian_parameters(self.x_train)
+            self.gaussian = VariationalAutoencoder.get_gaussian_parameters(self.x_train)
 
         self.x_train_length = len(self.x_train)
         self.x_test_length = len(self.x_test)
@@ -396,6 +368,7 @@ class VariationalAutoencoder:
         self.enable_activation = enable_activation
         self.encoder_activation = encoder_activation  # 'relu', 'tanh', 'elu', 'softmax', 'sigmoid'
         self.decoder_activation = decoder_activation
+        self.final_activation = final_activation
         self.dropout_rate = dropout_rate
         self.l2_constant = l2_constant
         self.patience_limit = self.number_of_epochs // 10
@@ -452,12 +425,10 @@ class VariationalAutoencoder:
         Tensorflow Input instances for declaring model inputs.
         """
         self.mnist_shape = self.x_train.shape[1:]
-        self.gaussian_shape = self.latent_dim
-        self.encoder_gaussian_mean = Input(shape=self.gaussian_shape, name='enc_gaussian_mean')
-        self.encoder_gaussian_covariance = Input(shape=self.gaussian_shape, name='enc_gaussian_covariance')
+        self.gaussian_shape = 2*self.latent_dim
+        self.encoder_gaussian = Input(shape=self.gaussian_shape, name='enc_gaussian')
         self.encoder_mnist_input = Input(shape=self.mnist_shape, name='enc_mnist')
-        self.auto_encoder_gaussian_mean = Input(shape=self.gaussian_shape, name='ae_gaussian_mean')
-        self.auto_encoder_gaussian_covariance = Input(shape=self.gaussian_shape, name='ae_gaussian_covariance')
+        self.auto_encoder_gaussian = Input(shape=self.gaussian_shape, name='ae_gaussian')
         self.auto_encoder_mnist_input = Input(shape=self.mnist_shape, name='ae_mnist')
 
         """
@@ -515,31 +486,24 @@ class VariationalAutoencoder:
         z = Dense(20, activation=self.encoder_activation)(z)
         z = BatchNormalization(epsilon=1e-5)(z)
 
-        z_mean = Dense(2, activation=self.encoder_activation, name="mu")(z)
-        z_logarithmic_covariance = Dense(2, activation=self.encoder_activation, name="log_sigma")(z)
-        z = Lambda(VariationalAutoencoder.reparametrize_and_sample,
-                   name="reparametrization_trick")([z_mean, z_logarithmic_covariance])
-        encoder_output = [z_mean, z_logarithmic_covariance, z]
+        z_gaussian = Dense(4, activation=self.encoder_activation, name="mu")(z)
+        z = Lambda(VariationalAutoencoder.reparametrize_and_sample, name="reparametrization_trick")(z_gaussian)
+        encoder_output = [z_gaussian, z]
 
-        encoder = Model([self.encoder_gaussian_mean,
-                         self.encoder_gaussian_covariance,
-                         self.encoder_mnist_input], encoder_output, name='encoder')
+        encoder = Model([self.encoder_gaussian, self.encoder_mnist_input], encoder_output, name='encoder')
         encoder.summary()
         plot_model(encoder, to_file=os.path.join(self.image_directory, 'encoder.png'), show_shapes=True)
 
-        return encoder, [z_mean, z_logarithmic_covariance, z]
+        return encoder, [z_gaussian, z]
 
     def define_decoder(self, encoder_output):
-        decoder_mean_input = Input(shape=encoder_output[1].shape[1:], name='mean_input')
-        decoder_covariance_input = Input(shape=encoder_output[2].shape[1:], name='covariance_input')
-        decoder_latent_input = Input(shape=encoder_output[0].shape[1:], name='latent_input')
+        decoder_gaussian_input = Input(shape=encoder_output[0].shape[1:], name='gaussian_input')
+        decoder_latent_input = Input(shape=encoder_output[1].shape[1:], name='latent_input')
         x = decoder_latent_input
-        mean = decoder_mean_input
-        covariance = decoder_covariance_input
+        gaussian = decoder_gaussian_input
 
-        trivial_lambda = Lambda(lambda w: w, name="trivial_lambda")
-        mean = trivial_lambda(mean)
-        covariance = trivial_lambda(covariance)
+        identity_lambda = Lambda(lambda w: w, name="identity_lambda")
+        gaussian = identity_lambda(gaussian)
 
         x = Dense(784, activation=self.decoder_activation)(x)
         x = BatchNormalization(epsilon=1e-5)(x)
@@ -562,42 +526,32 @@ class VariationalAutoencoder:
         x = Conv2DTranspose(filters=1,
                             kernel_size=(3, 3),
                             padding="same",
-                            activation=self.decoder_activation,
+                            activation=self.final_activation,
                             name='decoder_output')(x)
         x = Reshape((28, 28))(x)
 
-        decoder_output = [mean, covariance, x]
-        decoder = Model([decoder_mean_input,
-                         decoder_covariance_input,
-                         decoder_latent_input],
-                        decoder_output,
-                        name='decoder')
+        decoder_output = [gaussian, x]
+        decoder = Model([decoder_gaussian_input, decoder_latent_input], decoder_output, name='decoder')
         decoder.summary()
         plot_model(decoder, to_file=os.path.join(self.image_directory, 'decoder.png'), show_shapes=True)
 
         return decoder
-        #small project, red cross, developing projects for health, on 17+-2days in March, workshop
-        #
 
     def define_autoencoder(self):
         encoder, z = self.define_encoder()
         decoder = self.define_decoder(z)
 
-        auto_encoder_input = [self.auto_encoder_gaussian_mean,
-                              self.auto_encoder_gaussian_covariance,
-                              self.auto_encoder_mnist_input]
+        auto_encoder_input = [self.auto_encoder_gaussian, self.auto_encoder_mnist_input]
         latent_space_input = encoder(auto_encoder_input)
         auto_encoder_output = decoder(latent_space_input)
         auto_encoder = Model(auto_encoder_input, auto_encoder_output, name='variational_auto_encoder')
-
-        # reconstruction_loss = MeanSquaredError(auto_encoder_input, auto_encoder_output)
-        # encoding_loss = VariationalAutoencoder.encoding_loss(encoder_output[0], encoder_output[1])
-
+        encoding_loss = VariationalAutoencoder.encoding_loss
+        reconstruction_loss = VariationalAutoencoder.approximate_reconstruction_loss
         auto_encoder.summary()
         plot_model(auto_encoder, to_file=os.path.join(self.image_directory, 'auto_encoder.png'), show_shapes=True)
-        auto_encoder.compile(loss=VariationalAutoencoder.approximate_reconstruction_loss,
-                             # loss_weights=[1, -self.beta],
-                             optimizer=optimizers.Adam(lr=self.learning_rate))
+        auto_encoder.compile(optimizers.Adam(lr=self.learning_rate),
+                             loss=[encoding_loss, reconstruction_loss],
+                             loss_weights=[-self.beta, 1])
         return auto_encoder, encoder, decoder
 
     def fit_autoencoder(self):
@@ -606,8 +560,8 @@ class VariationalAutoencoder:
         :return:
         """
         auto_encoder, encoder, decoder = self.define_autoencoder()
-        history = auto_encoder.fit([self.mean_array, self.covariance_array, self.x_train],
-                                   [self.mean_array, self.covariance_array, self.x_train],
+        history = auto_encoder.fit([self.gaussian, self.x_train],
+                                   [self.gaussian, self.x_train],
                                    epochs=self.number_of_epochs,
                                    batch_size=self.batch_size,
                                    callbacks=[self.tensorboard_callback])
@@ -661,12 +615,13 @@ class VariationalAutoencoder:
             model_name (string): which model is using this function
         """
         encoder, decoder = models
-        test_mean, test_covariance = VariationalAutoencoder.get_gaussian_parameters(self.x_test)
+        test_gaussian = VariationalAutoencoder.get_gaussian_parameters(self.x_test)
         os.makedirs(self.image_directory, exist_ok=True)
         filename = os.path.join(self.image_directory, "vae_mean.png")
 
         # display a 2D plot of the digit classes in the latent space
-        z_mean, z_covariance, z_mnist = encoder.predict([test_mean, test_covariance, self.x_test], batch_size=batch_size)
+        z_gaussian, z_mnist = encoder.predict([test_gaussian, self.x_test], batch_size=batch_size)
+        z_mean, z_covariance = VariationalAutoencoder.split_gaussian_parameters(z_gaussian)
         plt.figure(figsize=(12, 10))
         plt.scatter(z_mean[:, 0], z_mean[:, 1], c=self.y_test)
         plt.colorbar()
@@ -687,11 +642,10 @@ class VariationalAutoencoder:
 
         for i, yi in enumerate(grid_y):
             for j, xi in enumerate(grid_x):
-                z_mean = np.array([[0, 0]])
-                z_covariance = np.array([[1, 1]])
+                dummy_gaussian = np.array([[0, 0, 1, 1]])
                 z_sample = np.array([[xi, yi]])
-                x_decoded = decoder.predict([z_mean, z_covariance, z_sample])
-                digit = x_decoded[2].reshape(digit_size, digit_size)
+                x_decoded = decoder.predict([dummy_gaussian, z_sample])
+                digit = x_decoded[1].reshape(digit_size, digit_size)
                 figure[i * digit_size: (i + 1) * digit_size,
                 j * digit_size: (j + 1) * digit_size] = digit
 
@@ -726,4 +680,4 @@ class VariationalAutoencoder:
         self.plot_results((encoder, decoder))
 
 
-vae = VariationalAutoencoder(number_of_epochs=5).train()
+vae = VariationalAutoencoder(number_of_epochs=50).train()
