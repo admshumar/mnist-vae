@@ -249,8 +249,8 @@ class VariationalAutoencoder:
 
         dimension = 2
 
-        encoder_loss = k.sum(prior_log_covariance) - k.sum(ap_log_covariance) - dimension \
-                       + k.sum(ap_covariance / prior_covariance) + k.sum(k.square(prior_mean - ap_mean)/prior_covariance)
+        encoder_loss = k.sum(prior_log_covariance, axis=-1) - k.sum(ap_log_covariance, axis=-1) - dimension \
+                       + k.sum(ap_covariance / prior_covariance, axis=-1) + k.sum(k.square(prior_mean - ap_mean)/prior_covariance, axis=-1)
 
         encoder_loss *= 0.5
 
@@ -516,12 +516,12 @@ class VariationalAutoencoder:
         auto_encoder_output = decoder(latent_space_input)
         auto_encoder = Model(auto_encoder_input, auto_encoder_output, name='variational_auto_encoder')
         encoding_loss = VariationalAutoencoder.encoding_loss
-        reconstruction_loss = VariationalAutoencoder.approximate_reconstruction_loss
+        reconstruction_loss = tensorflow.keras.losses.MeanSquaredError()
         auto_encoder.summary()
         plot_model(auto_encoder, to_file=os.path.join(self.image_directory, 'auto_encoder.png'), show_shapes=True)
         auto_encoder.compile(optimizers.Adam(lr=self.learning_rate),
                              loss=[encoding_loss, reconstruction_loss],
-                             loss_weights=[self.beta/self.data_dimension, 1])
+                             loss_weights=[self.beta, 764])
         return auto_encoder, encoder, decoder
 
     def fit_autoencoder(self):
@@ -608,8 +608,8 @@ class VariationalAutoencoder:
         figure = np.zeros((digit_size * n, digit_size * n))
         # linearly spaced coordinates corresponding to the 2D plot
         # of digit classes in the latent space
-        grid_x = np.linspace(-1.5, 1.5, n)
-        grid_y = np.linspace(-1.5, 1.5, n)[::-1]
+        grid_x = np.linspace(-4, 4, n)
+        grid_y = np.linspace(-4.5, 3.5, n)[::-1]
 
         for i, yi in enumerate(grid_y):
             for j, xi in enumerate(grid_x):
@@ -652,17 +652,12 @@ class VariationalAutoencoder:
         self.plot_results((encoder, decoder))
 
 
-epoch = 100
-beta = 2
-activation_list = ['relu', 'tanh', 'elu', 'softmax', 'sigmoid']
-final_activation_list = ['tanh', 'sigmoid']
-for activation in activation_list:
-    for act in final_activation_list:
-        vae = VariationalAutoencoder(number_of_epochs=epoch,
-                                     encoder_activation=activation,
-                                     decoder_activation='tanh',
-                                     final_activation=act,
-                                     learning_rate_initial=1e-3,
-                                     beta=beta)
-        vae.train()
-        del vae
+vae = VariationalAutoencoder(number_of_epochs=200,
+                             enable_stochastic_gradient_descent=True,
+                             encoder_activation='relu',
+                             decoder_activation='relu',
+                             final_activation='sigmoid',
+                             learning_rate_initial=1e-2,
+                             beta=1)
+vae.train()
+del vae
