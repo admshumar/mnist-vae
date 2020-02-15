@@ -15,6 +15,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.utils import plot_model
 
 from data import image_directory_counter
+from models.layers import vae_layers
 
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.manifold import TSNE
@@ -266,7 +267,8 @@ class VariationalAutoencoder:
                  dropout_rate=0.5,
                  l2_constant=1e-4,
                  early_stopping_delta=1,
-                 beta=1
+                 beta=1,
+                 enable_logging=True
                  ):
         """
         For an MNIST variational autoencoder, we have the usual options that control network hyperparameters. In
@@ -303,6 +305,7 @@ class VariationalAutoencoder:
             insufficient change in the validation loss.
         :param beta: A float indicating the beta hyperparameter for a beta-variational autoencoder. Default is 0.
         """
+        self.enable_logging = enable_logging
         self.deep = deep
         self.is_mnist = is_mnist
         self.is_restricted = is_restricted
@@ -465,7 +468,7 @@ class VariationalAutoencoder:
         z = Dense(self.intermediate_dimension, activation=self.encoder_activation)(z)
 
         z_gaussian = Dense(self.gaussian_dimension, name="gaussian")(z)
-        z = Lambda(VariationalAutoencoder.reparametrize_and_sample, name="latent_samples")(z_gaussian)
+        z = vae_layers.Reparametrization(name="latent_samples")(z_gaussian)
         encoder_output = [z_gaussian, z]
 
         encoder = Model([self.encoder_gaussian, self.encoder_mnist_input], encoder_output, name='encoder')
@@ -656,7 +659,8 @@ class VariationalAutoencoder:
         of the autoencoder, encoder, and decoder (respectively) to .h5 files.
         :return: None
         """
-        self.begin_logging()
+        if self.enable_logging:
+            self.begin_logging()
 
         auto_encoder, encoder, decoder, history = self.fit_autoencoder()
 
@@ -669,12 +673,12 @@ class VariationalAutoencoder:
 
 
 vae = VariationalAutoencoder(number_of_epochs=100,
+                             enable_logging=False,
                              enable_stochastic_gradient_descent=True,
                              encoder_activation='relu',
                              decoder_activation='relu',
                              final_activation='sigmoid',
                              learning_rate_initial=1e-2,
-                             beta=beta,
                              has_validation_set=True)
 vae.train()
 del vae

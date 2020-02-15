@@ -12,8 +12,8 @@ class Reparametrization(Layer):
         reparametrization = mean + epsilon * standard_deviation
         return reparametrization
 
-    def __init__(self):
-        super(Reparametrization, self).__init__()
+    def __init__(self, **kwargs):
+        super(Reparametrization, self).__init__(**kwargs)
 
     def call(self, gaussian_parameters, **kwargs):
         dimension = gaussian_parameters.shape[1] // 2
