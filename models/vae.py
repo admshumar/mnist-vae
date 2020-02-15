@@ -9,9 +9,9 @@ import tensorflow
 
 import tensorflow.keras.backend as k
 from tensorflow.keras import regularizers, optimizers
-from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ReduceLROnPlateau, TerminateOnNaN
 from tensorflow.keras.layers import *
-from tensorflow.keras.models import Model, save_model
+from tensorflow.keras.models import Model
 from tensorflow.keras.utils import plot_model
 
 from data import image_directory_counter
@@ -37,7 +37,7 @@ class VariationalAutoencoder:
         :return: None
         """
         filename = os.path.join(directory, 'losses.png')
-        model_losses = {'loss'}.intersection(set(model_history.history.keys()))
+        model_losses = {'loss', 'val_loss'}.intersection(set(model_history.history.keys()))
 
         fig = plt.figure(dpi=200)
         for loss in model_losses:
@@ -45,7 +45,7 @@ class VariationalAutoencoder:
         plt.title('Model Loss')
         plt.ylabel('Loss')
         plt.xlabel('Epoch')
-        plt.legend(['Total Loss', 'KL', 'RL'], loc='upper right')
+        plt.legend(['Train', 'Val'], loc='upper right')
         fig.savefig(filename)
         plt.close(fig)
 
@@ -101,10 +101,9 @@ class VariationalAutoencoder:
         return mean + epsilon * standard_deviation
 
     @classmethod
-    def normalize(cls, x_train, x_test):
-        x_train = x_train.astype('float32') / 255
-        x_test = x_test.astype('float32') / 255
-        return x_train, x_test
+    def normalize(cls, data):
+        data = data.astype('float32') / 255
+        return data
 
     @classmethod
     def reshape_for_convolution(cls, x_train, x_test):
@@ -157,7 +156,11 @@ class VariationalAutoencoder:
         Make an output directory indexed by a set of hyperparameters.
         :return: A string corresponding to the output directory.
         """
-        output_directory = os.path.abspath(os.path.join(os.getcwd(), '..', 'data', 'experiments', hyper_parameter_string))
+        output_directory = os.path.abspath(os.path.join(os.getcwd(),
+                                                        '..',
+                                                        'data',
+                                                        'experiments',
+                                                        hyper_parameter_string))
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
         return output_directory
@@ -180,69 +183,46 @@ class VariationalAutoencoder:
         return sequence[::-1]
 
     @classmethod
-    def get_mnist_data(cls):
+    def get_mnist_data(cls, has_validation_set=False):
         """
         Grab the TensorFlow Keras incarnation of the MNIST data set.
-        :return: A NumPy array of MNIST training and test sets.
+        :return: NumPy arrays of MNIST training and test sets.
         """
         (x_train, y_train), (x_test, y_test) = tensorflow.keras.datasets.mnist.load_data()
         return x_train, y_train, x_test, y_test
 
     @classmethod
-    def split_data(cls, data,
-                   label_index,
-                   random_state=17,
-                   test_size=0.30,
-                   is_stratified=False,
-                   enable_cross_validation=False,
-                   number_of_folds=5):
-
-        if enable_cross_validation:
-            skf = StratifiedKFold(n_splits=number_of_folds,
-                                  random_state=random_state)
-            skf.get_n_splits()
-            # Determine the construction of train and test
-
-        elif is_stratified:
-            train, test = train_test_split(data,
-                                           test_size=test_size,
-                                           random_state=random_state,
-                                           stratify=data[:, label_index])
-
-        else:
-            train, test = train_test_split(data,
-                                           test_size=test_size,
-                                           random_state=random_state)
-
-        return train, test
-
-    @classmethod
-    def approximate_reconstruction_loss(cls, y_true, y_pred):
+    def get_split_mnist_data(cls, val_size=0.5):
         """
-        Compute the mean squared error approximation to the reconstruction loss.
-        :param y_true: A Keras tensor of MNIST digits.
-        :param y_pred: A Keras tensor of digits predicted by the variational autoencoder.
-        :return: A float indicating the approximate reconstruction loss.
+        Grab the TensorFlow Keras incarnation of the MNIST data set, then split the training set into a training subset
+        and a validation subset.
+        :return: NumPy arrays of MNIST training, validation, and test sets.
         """
-        loss = y_true-y_pred
-        loss = k.flatten(loss)
-        loss = k.square(loss)
-        loss = k.mean(loss)
-        return loss
+        (x_train, y_train), (x_test, y_test) = tensorflow.keras.datasets.mnist.load_data()
+        x_val, x_test, y_val, y_test = train_test_split(x_test, y_test,
+                                                          test_size=val_size,
+                                                          random_state=37,
+                                                          stratify=y_test)
+        return x_train, y_train, x_val, y_val, x_test, y_test
+
 
     @classmethod
     def encoding_loss(cls, y_true, y_pred):
         """
-        Compute the Kullback-Leibler divergence between two arbitrary multivariate Gaussians.
-        :param y_true: A dummy Keras tensor.
-        :param y_pred: A Keras tensor consisting of the parameters of an arbitrary multivariate Gaussian, which is
-            parametrized by the encoder model and thus represents the approximate posterior of the variational
-            autoencoder's generative model.
+        Compute the Kullback-Leibler divergence between two arbitrary multivariate Gaussians. For what follows, let N be
+        the dimension of a Euclidean space on which both Gaussians are defined.
+        :param y_true: A Keras tensor of shape (?, N) consisting of the parameters of the multivariate Gaussian prior on
+            latent space.
+        :param y_pred: A Keras tensor of shape (?, N) consisting of the parameters of the multivariate Gaussian
+            approximate posterior parametrized by the encoder model.
         :return: A float indicating the encoding loss.
         """
+        latent_dimension = y_true.shape[-1]
+
         prior_mean = y_true[:, 0:2]
         prior_log_covariance = y_true[:, 2:]
         prior_covariance = k.exp(prior_log_covariance)
+
         ap_mean = y_pred[:, 0:2]
         ap_log_covariance = y_pred[:, 2:]
         ap_covariance = k.exp(ap_log_covariance)
@@ -250,7 +230,8 @@ class VariationalAutoencoder:
         dimension = 2
 
         encoder_loss = k.sum(prior_log_covariance, axis=-1) - k.sum(ap_log_covariance, axis=-1) - dimension \
-                       + k.sum(ap_covariance / prior_covariance, axis=-1) + k.sum(k.square(prior_mean - ap_mean)/prior_covariance, axis=-1)
+            + k.sum(ap_covariance / prior_covariance, axis=-1) \
+            + k.sum(k.square(prior_mean - ap_mean)/prior_covariance, axis=-1)
 
         encoder_loss *= 0.5
 
@@ -266,6 +247,7 @@ class VariationalAutoencoder:
                  intermediate_dimension=512,
                  enable_stochastic_gradient_descent=False,
                  has_custom_layers=True,
+                 has_validation_set=False,
                  exponent_of_latent_space_dimension=1,
                  enable_augmentation=False,
                  augmentation_size=100,
@@ -283,7 +265,7 @@ class VariationalAutoencoder:
                  final_activation='sigmoid',
                  dropout_rate=0.5,
                  l2_constant=1e-4,
-                 early_stopping_delta=0.1,
+                 early_stopping_delta=1,
                  beta=1
                  ):
         """
@@ -318,7 +300,7 @@ class VariationalAutoencoder:
         :param dropout_rate: A float indicating the proportion of neurons to be deactivated.
         :param l2_constant: A float indicating the amount of L2 regularization.
         :param early_stopping_delta: A float indicating the number of epochs before training is halted due to an
-            insufficient change in the training evidence_lower_bound.
+            insufficient change in the validation loss.
         :param beta: A float indicating the beta hyperparameter for a beta-variational autoencoder. Default is 0.
         """
         self.deep = deep
@@ -341,21 +323,28 @@ class VariationalAutoencoder:
         self.show = show
         self.restriction_labels = restriction_labels
 
+        self.has_validation_set = has_validation_set
         if self.is_mnist:
-            self.x_train, self.y_train, self.x_test, self.y_test = VariationalAutoencoder.get_mnist_data()
+            if self.has_validation_set:
+                self.x_train, self.y_train, \
+                self.x_val, self.y_val, \
+                self.x_test, self.y_test = VariationalAutoencoder.get_split_mnist_data()
+            else:
+                self.x_train, self.y_train, self.x_test, self.y_test = VariationalAutoencoder.get_mnist_data()
+
             self.data_width, self.data_height = self.x_train.shape[1], self.x_train.shape[2]
             self.data_dimension = self.data_width * self.data_height
             self.intermediate_dimension = intermediate_dimension
-            self.x_train, self.x_test = VariationalAutoencoder.normalize(self.x_train, self.x_test)
-            self.gaussian = VariationalAutoencoder.get_gaussian_parameters(self.x_train)
+
+            self.x_train = VariationalAutoencoder.normalize(self.x_train)
+            self.x_val = VariationalAutoencoder.normalize(self.x_val)
+            self.x_test = VariationalAutoencoder.normalize(self.x_test)
+
+            self.gaussian_train = VariationalAutoencoder.get_gaussian_parameters(self.x_train)
+            self.gaussian_val = VariationalAutoencoder.get_gaussian_parameters(self.x_test)
 
         self.x_train_length = len(self.x_train)
         self.x_test_length = len(self.x_test)
-
-        if self.is_mnist:
-            self.w_train = self.x_train
-            self.w_test = self.x_test
-        # else:
 
         """
         Hyperparameters for the neural network.
@@ -377,7 +366,7 @@ class VariationalAutoencoder:
         self.final_activation = final_activation
         self.dropout_rate = dropout_rate
         self.l2_constant = l2_constant
-        self.patience_limit = self.number_of_epochs // 10
+        self.patience_limit = self.number_of_epochs // 5
         self.early_stopping_delta = early_stopping_delta
 
         self.latent_dim = 2
@@ -442,21 +431,22 @@ class VariationalAutoencoder:
         Callbacks to TensorBoard for observing the model structure and network training curves.
         """
         self.tensorboard_callback = TensorBoard(log_dir=os.path.join(self.directory, 'tensorboard_logs'),
-                                                histogram_freq=1,
-                                                write_graph=False,
+                                                histogram_freq=2,
+                                                write_graph=True,
                                                 write_images=True)
-        """
+
         self.early_stopping_callback = EarlyStopping(monitor='val_loss',
                                                      min_delta=self.early_stopping_delta,
                                                      patience=self.patience_limit,
                                                      mode='auto',
                                                      restore_best_weights=True)
-        """
 
         self.learning_rate_callback = ReduceLROnPlateau(monitor='val_loss',
                                                         factor=0.1,
                                                         patience=50,
                                                         min_lr=self.learning_rate_minimum)
+
+        self.nan_termination_callback = TerminateOnNaN()
 
         self.colors = ['#00B7BA', '#FFB86F', '#5E6572', '#6B0504', '#BA5C12']
 
@@ -491,7 +481,7 @@ class VariationalAutoencoder:
         gaussian = decoder_gaussian_input
 
         # Needed to prevent Keras from complaining that nothing was done to this tensor:
-        identity_lambda = Lambda(lambda w: w, name="identity_lambda")
+        identity_lambda = Lambda(lambda w: w, name="dec_identity_lambda")
         gaussian = identity_lambda(gaussian)
 
         x = Dense(self.intermediate_dimension, activation=self.decoder_activation)(x)
@@ -524,18 +514,38 @@ class VariationalAutoencoder:
                              loss_weights=[self.beta, 764])
         return auto_encoder, encoder, decoder
 
+    def get_fit_args(self):
+        """
+        Define a list of NumPy inputs and NumPy outputs of the Keras model. These are the actual data that flow through
+        the Keras model.
+        :return: A list of arguments for the fit method of the Keras model.
+        """
+        return [[self.gaussian_train, self.x_train], [self.gaussian_train, self.x_train]]
+
+    def get_fit_kwargs(self):
+        """
+        Construct keyword arguments for fitting the Keras model. This is useful for conditioning the model's training
+        on the presence of a validation set.
+        :return: A dictionary of keyword arguments for the fit method of the Keras model.
+        """
+        fit_kwargs = dict()
+        fit_kwargs['epochs'] = self.number_of_epochs
+        fit_kwargs['batch_size'] = self.batch_size
+        fit_kwargs['callbacks'] = [self.early_stopping_callback, self.nan_termination_callback]
+        if self.has_validation_set:
+            fit_kwargs['validation_data'] = ([self.gaussian_val, self.x_val], [self.gaussian_val, self.x_val])
+        return fit_kwargs
+
     def fit_autoencoder(self):
         """
-
-        :return:
+        Fit the autoencoder to the data.
+        :return: A 4-tuple consisting of the autoencoder, encoder, and decoder Keras models, along with the history of
+            the autoencoder, which stores training and validation metrics.
         """
+        args = self.get_fit_args()
+        kwargs = self.get_fit_kwargs()
         auto_encoder, encoder, decoder = self.define_autoencoder()
-        history = auto_encoder.fit([self.gaussian, self.x_train],
-                                   [self.gaussian, self.x_train],
-                                   epochs=self.number_of_epochs,
-                                   batch_size=self.batch_size,
-                                   callbacks=[self.tensorboard_callback])
-
+        history = auto_encoder.fit(*args, **kwargs)
         print("Variational autoencoder trained.\n")
         return auto_encoder, encoder, decoder, history
 
@@ -569,11 +579,16 @@ class VariationalAutoencoder:
         :return: None
         """
         model_directory = os.path.join(self.image_directory, 'models')
+        auto_encoder_filepath = os.path.join(model_directory, 'autoencoder.h5')
+        encoder_filepath = os.path.join(model_directory, 'encoder.h5')
+        decoder_filepath = os.path.join(model_directory, 'decoder.h5')
+
         if not os.path.exists(model_directory):
             os.makedirs(model_directory)
-        autoencoder.save_weights(os.path.join(model_directory, 'autoencoder.h5'))
-        encoder.save_weights(os.path.join(model_directory, 'encoder.h5'))
-        decoder.save_weights(os.path.join(model_directory, 'decoder.h5'))
+
+        autoencoder.save_weights(auto_encoder_filepath)
+        encoder.save_weights(encoder_filepath)
+        decoder.save_weights(decoder_filepath)
 
     def plot_results(self, models):
         """Plots labels and MNIST digits as a function of the 2D latent vector
@@ -652,12 +667,14 @@ class VariationalAutoencoder:
         self.plot_results((encoder, decoder))
 
 
-vae = VariationalAutoencoder(number_of_epochs=200,
+
+vae = VariationalAutoencoder(number_of_epochs=100,
                              enable_stochastic_gradient_descent=True,
                              encoder_activation='relu',
                              decoder_activation='relu',
                              final_activation='sigmoid',
                              learning_rate_initial=1e-2,
-                             beta=1)
+                             beta=beta,
+                             has_validation_set=True)
 vae.train()
 del vae
