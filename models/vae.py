@@ -85,23 +85,6 @@ class VariationalAutoencoder:
         return mean, logarithmic_covariance
 
     @classmethod
-    def reparametrize_and_sample(cls, gaussian_parameters):
-        """
-        The given mean and logarithmic covariance are regarded as parameters for an isotropic Gaussian. Sampling from
-        this Gaussian is identical to first sampling from a Gaussian with zero mean and identity covariance and
-        then scaling and translating the samples. This is the "reparametrization trick" of Kingma and Welling, found in
-        their paper "Autoencoding Variational Bayes".
-        :param gaussian_parameters: A List of NumPy arrays, consisting of the mean and covariance of a Gaussian.
-        :return: A NumPy array representing a set of samples drawn from a reparametrized isotropic Gaussian.
-        """
-        dimension = gaussian_parameters.shape[1] // 2
-        mean, logarithmic_covariance = gaussian_parameters[:, 0:dimension], gaussian_parameters[:, dimension:]
-        standard_deviation = tensorflow.keras.backend.exp(0.5 * logarithmic_covariance)
-        shape = tensorflow.shape(mean)
-        epsilon = tensorflow.keras.backend.random_normal(shape)
-        return mean + epsilon * standard_deviation
-
-    @classmethod
     def normalize(cls, data):
         data = data.astype('float32') / 255
         return data
