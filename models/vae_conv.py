@@ -255,11 +255,15 @@ class VariationalAutoencoder:
 
         self.colors = ['#00B7BA', '#FFB86F', '#5E6572', '#6B0504', '#BA5C12']
 
+    # def compute_convolution_dimension(self, number_of_convolutions, kernel_size, strides):
+        # Returns the product of the shape of a feature map after all convolution operations have been performed.
+
     def define_encoder(self):
         z = self.encoder_mnist_input
+        z = Reshape((28, 28, 1))(z)
+        z = Conv2D(8, kernel_size=(3, 3), strides=(2, 2), padding='same', activation=self.encoder_activation)(z)
+        z = Conv2D(16, kernel_size=(3, 3), strides=(2, 2), padding='same', activation=self.encoder_activation)(z)
         z = Flatten()(z)
-        z = Dense(self.intermediate_dimension, activation=self.encoder_activation)(z)
-
         z_gaussian = Dense(self.gaussian_dimension, name="gaussian")(z)
         z = vae_layers.Reparametrization(name="latent_samples")(z_gaussian)
         encoder_output = [z_gaussian, z]
@@ -275,14 +279,24 @@ class VariationalAutoencoder:
         decoder_latent_input = Input(shape=encoder_output[1].shape[1:], name='latent_input')
         x = decoder_latent_input
         gaussian = decoder_gaussian_input
+        convolution_dimension = 784
 
         # Needed to prevent Keras from complaining that nothing was done to this tensor:
         identity_lambda = Lambda(lambda w: w, name="dec_identity_lambda")
         gaussian = identity_lambda(gaussian)
 
-        x = Dense(self.intermediate_dimension, activation=self.decoder_activation)(x)
-
-        x = Dense(self.data_dimension, activation=self.final_activation)(x)
+        x = Dense(convolution_dimension, activation=self.decoder_activation)(x)
+        x = Reshape((7,7,16))(x)
+        x = Conv2DTranspose(8,
+                            kernel_size=(3, 3),
+                            strides=(2, 2),
+                            padding='same',
+                            activation=self.decoder_activation)(x)
+        x = Conv2DTranspose(1,
+                            kernel_size=(3, 3),
+                            strides=(2, 2),
+                            padding='same',
+                            activation=self.decoder_activation)(x)
 
         x = Reshape((28, 28))(x)
 
@@ -467,8 +481,8 @@ class VariationalAutoencoder:
 vae = VariationalAutoencoder(number_of_epochs=100,
                              enable_logging=True,
                              enable_stochastic_gradient_descent=True,
-                             encoder_activation='tanh',
-                             decoder_activation='tanh',
+                             encoder_activation='relu',
+                             decoder_activation='relu',
                              final_activation='sigmoid',
                              learning_rate_initial=1e-2,
                              has_validation_set=True)

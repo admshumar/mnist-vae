@@ -6,6 +6,21 @@ class DirectoryCounter:
     """
     A class that counts the number of directories with a matching hyperparameter string.
     """
+    @classmethod
+    def make_output_directory(cls, hyper_parameter_string):
+        """
+        Make an output directory indexed by a set of hyperparameters.
+        :return: A string corresponding to the output directory.
+        """
+        output_directory = os.path.abspath(os.path.join(os.getcwd(),
+                                                        '..',
+                                                        'data',
+                                                        'experiments',
+                                                        hyper_parameter_string))
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+        return output_directory
+
     def __init__(self, hyperparameter_string):
         self.rootdir = os.path.dirname(os.path.realpath(__file__))
         self.regex = re.compile(hyperparameter_string)
