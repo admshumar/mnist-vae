@@ -15,7 +15,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.utils import plot_model
 
 from data import image_directory_counter
-from models.layers import vae_layers
+from models.layers.vae_layers import Reparametrization
 from models.losses.losses import EncodingLoss
 from utils import logs, operations, plots
 
@@ -66,7 +66,7 @@ class VariationalAutoencoder:
                  encoder_activation='relu',  # 'relu', 'tanh', 'elu', 'softmax', 'sigmoid'
                  decoder_activation='relu',
                  final_activation='sigmoid',
-                 dropout_rate=0.5,
+                 dropout_rate=0.2,
                  l2_constant=1e-4,
                  early_stopping_delta=1,
                  beta=1,
@@ -261,11 +261,22 @@ class VariationalAutoencoder:
     def define_encoder(self):
         z = self.encoder_mnist_input
         z = Reshape((28, 28, 1))(z)
+
         z = Conv2D(8, kernel_size=(3, 3), strides=(2, 2), padding='same', activation=self.encoder_activation)(z)
+        if self.enable_batch_normalization:
+            z = BatchNormalization()(z)
+        if self.enable_dropout:
+            z = Dropout(rate=self.dropout_rate, seed=17)(z)
+
         z = Conv2D(16, kernel_size=(3, 3), strides=(2, 2), padding='same', activation=self.encoder_activation)(z)
+        if self.enable_batch_normalization:
+            z = BatchNormalization()(z)
+        if self.enable_dropout:
+            z = Dropout(rate=self.dropout_rate, seed=17)(z)
+
         z = Flatten()(z)
         z_gaussian = Dense(self.gaussian_dimension, name="gaussian")(z)
-        z = vae_layers.Reparametrization(name="latent_samples")(z_gaussian)
+        z = Reparametrization(name="latent_samples")(z_gaussian)
         encoder_output = [z_gaussian, z]
 
         encoder = Model([self.encoder_gaussian, self.encoder_mnist_input], encoder_output, name='encoder')
@@ -286,17 +297,26 @@ class VariationalAutoencoder:
         gaussian = identity_lambda(gaussian)
 
         x = Dense(convolution_dimension, activation=self.decoder_activation)(x)
-        x = Reshape((7,7,16))(x)
+        x = Reshape((7, 7, 16))(x)
         x = Conv2DTranspose(8,
                             kernel_size=(3, 3),
                             strides=(2, 2),
                             padding='same',
                             activation=self.decoder_activation)(x)
+        if self.enable_batch_normalization:
+            x = BatchNormalization()(x)
+        if self.enable_dropout:
+            x = Dropout(rate=self.dropout_rate, seed=17)(x)
+
         x = Conv2DTranspose(1,
                             kernel_size=(3, 3),
                             strides=(2, 2),
                             padding='same',
                             activation=self.decoder_activation)(x)
+        if self.enable_batch_normalization:
+            x = BatchNormalization()(x)
+        if self.enable_dropout:
+            x = Dropout(rate=self.dropout_rate, seed=17)(x)
 
         x = Reshape((28, 28))(x)
 
@@ -479,12 +499,15 @@ class VariationalAutoencoder:
 
 
 vae = VariationalAutoencoder(number_of_epochs=100,
+                             enable_dropout=True,
                              enable_logging=True,
+                             enable_batch_normalization=True,
                              enable_stochastic_gradient_descent=True,
                              encoder_activation='relu',
                              decoder_activation='relu',
                              final_activation='sigmoid',
                              learning_rate_initial=1e-2,
-                             has_validation_set=True)
+                             has_validation_set=True,
+                             beta=2)
 vae.train()
 del vae
