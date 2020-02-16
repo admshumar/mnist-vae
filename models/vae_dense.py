@@ -14,10 +14,9 @@ from tensorflow.keras.layers import *
 from tensorflow.keras.models import Model
 from tensorflow.keras.utils import plot_model
 
-from data import image_directory_counter
 from models.layers import vae_layers
 from models.losses.losses import EncodingLoss
-from utils import logs, operations, plots
+from utils import logs, operations, plots, directories
 
 from sklearn.model_selection import train_test_split
 
@@ -216,10 +215,10 @@ class VariationalAutoencoder:
 
         self.hyper_parameter_string = '_'.join([str(i) for i in self.hyper_parameter_list])
 
-        self.directory_counter = image_directory_counter.DirectoryCounter(self.hyper_parameter_string)
+        self.directory_counter = directories.DirectoryCounter(self.hyper_parameter_string)
         self.directory_number = self.directory_counter.count()
         self.hyper_parameter_string = '_'.join([self.hyper_parameter_string, 'x{:02d}'.format(self.directory_number)])
-        self.directory = image_directory_counter.DirectoryCounter.make_output_directory(self.hyper_parameter_string)
+        self.directory = directories.DirectoryCounter.make_output_directory(self.hyper_parameter_string)
         self.image_directory = os.path.join('images', self.directory)
 
         """
