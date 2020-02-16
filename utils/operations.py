@@ -67,6 +67,7 @@ def reshape_for_dense_map(x_train, x_test, dimension):
     x_test = np.reshape(x_test, (-1, 1, dimension * dimension))
     return x_train, x_test
 
+
 def aggregate_labels(list_of_labels):
     """
     Construct the class distribution of labels.
@@ -82,6 +83,7 @@ def aggregate_labels(list_of_labels):
         class_distribution[label] = label_proportion
 
     return class_distribution
+
 
 def get_power_sequence(data_dimension, exponent):
     """
