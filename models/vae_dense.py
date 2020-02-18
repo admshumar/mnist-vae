@@ -464,7 +464,7 @@ class DenseVAE:
         self.plot_results((encoder, decoder))
 
 
-vae = DenseVAE(number_of_epochs=100,
+vae = DenseVAE(number_of_epochs=10,
                enable_logging=True,
                enable_stochastic_gradient_descent=True,
                encoder_activation='tanh',
