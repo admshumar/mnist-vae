@@ -100,3 +100,9 @@ def get_power_sequence(data_dimension, exponent):
         sequence = sequence[:-1]
     sequence.append(data_dimension)
     return sequence[::-1]
+
+
+def restrict_data_by_label(data, labels, restriction_array):
+    condition = np.isin(labels, restriction_array)
+    restriction_indices = np.where(condition)
+    return data[restriction_indices], labels[restriction_indices]

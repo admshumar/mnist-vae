@@ -79,7 +79,7 @@ class DenseVAE:
         :param number_of_clusters: An integer indicating the number of clusters to be produced by clustering algorithms.
         :param is_restricted: A boolean indicating whether at least one class label is to be ignored.
         :param restriction_labels: A list of integers that indicate the class labels to be retained in the data set.
-        :param is_standardized: A boolean indicating whether the train and test sets are standardized before being
+        :param is_standardized: A boolean indicating whether the train_contrastive_mlp and test sets are standardized before being
             input into the network.
         :param enable_stochastic_gradient_descent: A boolean indicating whether SGD is performed during training.
         :param has_custom_layers: A boolean indicating the layer structure of the network.
@@ -106,6 +106,7 @@ class DenseVAE:
             insufficient change in the validation loss.
         :param beta: A float indicating the beta hyperparameter for a beta-variational autoencoder. Default is 0.
         """
+        self.model_name = "vae_dense"
         self.enable_logging = enable_logging
         self.deep = deep
         self.is_mnist = is_mnist
@@ -218,7 +219,7 @@ class DenseVAE:
         self.directory_counter = directories.DirectoryCounter(self.hyper_parameter_string)
         self.directory_number = self.directory_counter.count()
         self.hyper_parameter_string = '_'.join([self.hyper_parameter_string, 'x{:02d}'.format(self.directory_number)])
-        self.directory = directories.DirectoryCounter.make_output_directory(self.hyper_parameter_string)
+        self.directory = directories.DirectoryCounter.make_output_directory(self.hyper_parameter_string, self.model_name)
         self.image_directory = os.path.join('images', self.directory)
 
         """
@@ -447,7 +448,7 @@ class DenseVAE:
 
     def train(self):
         """
-        Begin logging, train the autoencoder, use the autoencoder's history to plot loss curves, and save the parameters
+        Begin logging, train_contrastive_mlp the autoencoder, use the autoencoder's history to plot loss curves, and save the parameters
         of the autoencoder, encoder, and decoder (respectively) to .h5 files.
         :return: None
         """

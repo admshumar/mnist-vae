@@ -23,7 +23,7 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
 
-class BetaTCVAE:
+class TCVAE:
 
     @classmethod
     def get_split_mnist_data(cls, val_size=0.5):
@@ -79,7 +79,7 @@ class BetaTCVAE:
         :param number_of_clusters: An integer indicating the number of clusters to be produced by clustering algorithms.
         :param is_restricted: A boolean indicating whether at least one class label is to be ignored.
         :param restriction_labels: A list of integers that indicate the class labels to be retained in the data set.
-        :param is_standardized: A boolean indicating whether the train and test sets are standardized before being
+        :param is_standardized: A boolean indicating whether the train_contrastive_mlp and test sets are standardized before being
             input into the network.
         :param enable_stochastic_gradient_descent: A boolean indicating whether SGD is performed during training.
         :param has_custom_layers: A boolean indicating the layer structure of the network.
@@ -106,6 +106,7 @@ class BetaTCVAE:
             insufficient change in the validation loss.
         :param beta: A float indicating the beta hyperparameter for a beta-variational autoencoder. Default is 0.
         """
+        self.model_name = "vae_tc"
         self.enable_logging = enable_logging
         self.deep = deep
         self.is_mnist = is_mnist
@@ -132,7 +133,7 @@ class BetaTCVAE:
             if self.has_validation_set:
                 self.x_train, self.y_train, \
                 self.x_val, self.y_val, \
-                self.x_test, self.y_test = BetaTCVAE.get_split_mnist_data()
+                self.x_test, self.y_test = TCVAE.get_split_mnist_data()
             else:
                 (self.x_train, self.y_train), (self.x_test, self.y_test) = mnist.load_data()
 
@@ -218,7 +219,7 @@ class BetaTCVAE:
         self.directory_counter = directories.DirectoryCounter(self.hyper_parameter_string)
         self.directory_number = self.directory_counter.count()
         self.hyper_parameter_string = '_'.join([self.hyper_parameter_string, 'x{:02d}'.format(self.directory_number)])
-        self.directory = directories.DirectoryCounter.make_output_directory(self.hyper_parameter_string)
+        self.directory = directories.DirectoryCounter.make_output_directory(self.hyper_parameter_string, self.model_name)
         self.image_directory = os.path.join('images', self.directory)
 
         """
@@ -481,7 +482,7 @@ class BetaTCVAE:
 
     def train(self):
         """
-        Begin logging, train the autoencoder, use the autoencoder's history to plot loss curves, and save the parameters
+        Begin logging, train_contrastive_mlp the autoencoder, use the autoencoder's history to plot loss curves, and save the parameters
         of the autoencoder, encoder, and decoder (respectively) to .h5 files.
         :return: None
         """
@@ -497,16 +498,16 @@ class BetaTCVAE:
         self.plot_results((encoder, decoder))
 
 
-vae = BetaTCVAE(number_of_epochs=12,
-                enable_dropout=True,
-                enable_logging=True,
-                enable_batch_normalization=True,
-                enable_stochastic_gradient_descent=True,
-                encoder_activation='relu',
-                decoder_activation='relu',
-                final_activation='sigmoid',
-                learning_rate_initial=1e-2,
-                has_validation_set=True,
-                beta=2)
+vae = TCVAE(number_of_epochs=12,
+            enable_dropout=True,
+            enable_logging=True,
+            enable_batch_normalization=True,
+            enable_stochastic_gradient_descent=True,
+            encoder_activation='relu',
+            decoder_activation='relu',
+            final_activation='sigmoid',
+            learning_rate_initial=1e-2,
+            has_validation_set=True,
+            beta=2)
 vae.define_autoencoder()
 del vae

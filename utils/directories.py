@@ -17,7 +17,7 @@ class DirectoryCounter:
         return directory
 
     @classmethod
-    def make_output_directory(cls, hyper_parameter_string):
+    def make_output_directory(cls, hyper_parameter_string, model_name):
         """
         Make an output directory indexed by a set of hyperparameters.
         :return: A string corresponding to the output directory.
@@ -26,6 +26,7 @@ class DirectoryCounter:
                                                         '..',
                                                         'data',
                                                         'experiments',
+                                                        model_name,
                                                         hyper_parameter_string))
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)

@@ -23,6 +23,9 @@ class OneHotEncoder:
 
 
 class Smoother(OneHotEncoder):
+    """
+    Perform label smoothing when given a list of labels for a data set.
+    """
     def __init__(self, labels, alpha=0.5):
         super(Smoother, self).__init__(labels)
         self.alpha = float(alpha)
