@@ -9,7 +9,6 @@ import tensorflow
 import tensorflow.keras.backend as k
 from tensorflow.keras import optimizers
 from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ReduceLROnPlateau, TerminateOnNaN
-from tensorflow.keras.losses import *
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.layers import *
 from tensorflow.keras.models import Model
@@ -369,35 +368,6 @@ class ConvolutionalVAE:
                              loss_weights=[self.beta, 764])
         return auto_encoder, encoder, decoder
 
-    def define_contrastive_mlp(self):
-        z = self.encoder_mnist_input
-        z = Reshape((28, 28, 1))(z)
-
-        z = Conv2D(8, kernel_size=(3, 3), strides=(2, 2), padding='same', activation=self.encoder_activation)(z)
-        if self.enable_batch_normalization:
-            z = BatchNormalization()(z)
-        if self.enable_dropout:
-            z = Dropout(rate=self.dropout_rate, seed=17)(z)
-
-        z = Conv2D(16, kernel_size=(3, 3), strides=(2, 2), padding='same', activation=self.encoder_activation)(z)
-        if self.enable_batch_normalization:
-            z = BatchNormalization()(z)
-        if self.enable_dropout:
-            z = Dropout(rate=self.dropout_rate, seed=17)(z)
-
-        z = Flatten()(z)
-        z = Dense(2, name="latent_representation", activation=self.encoder_activation)(z)
-        z = Dense(2, name="contrast_representation", activation='softmax')(z)
-        contrastive_mlp_output = z
-
-        contrastive_mlp = Model(self.encoder_mnist_input, contrastive_mlp_output, name='constrastive_mlp')
-        contrastive_mlp.summary()
-
-        plot_model(contrastive_mlp, to_file=os.path.join(self.image_directory, 'contrastive_mlp.png'), show_shapes=True)
-        contrastive_mlp.compile(optimizers.Adam(lr=self.learning_rate), loss='kld')
-        return contrastive_mlp, z
-
-
     def get_generic_fit_kwargs(self):
         """
         Get arguments for fitting an arbitrary Keras model.
@@ -409,15 +379,7 @@ class ConvolutionalVAE:
         fit_kwargs['callbacks'] = [self.early_stopping_callback, self.nan_termination_callback]
         return fit_kwargs
 
-    def get_contrastive_mlp_fit_args(self):
-        """
-        Define a list of NumPy inputs and NumPy outputs of the Keras model. These are the actual data that flow through
-        the Keras model.
-        :return: A list of arguments for the fit method of the Keras model.
-        """
-        return [self.x_train, self.y_train]
-
-    def get_autoencoder_fit_args(self):
+    def get_fit_args(self):
         """
         Define a list of NumPy inputs and NumPy outputs of the Keras model. These are the actual data that flow through
         the Keras model.
@@ -425,7 +387,7 @@ class ConvolutionalVAE:
         """
         return [[self.gaussian_train, self.x_train], [self.gaussian_train, self.x_train]]
 
-    def get_autoencoder_fit_kwargs(self):
+    def get_fit_kwargs(self):
         """
         Construct keyword arguments for fitting the Keras model. This is useful for conditioning the model's training
         on the presence of a validation set.
@@ -442,8 +404,8 @@ class ConvolutionalVAE:
         :return: A 4-tuple consisting of the autoencoder, encoder, and decoder Keras models, along with the history of
             the autoencoder, which stores training and validation metrics.
         """
-        args = self.get_autoencoder_fit_args()
-        kwargs = self.get_autoencoder_fit_kwargs()
+        args = self.get_fit_args()
+        kwargs = self.get_fit_kwargs()
         auto_encoder, encoder, decoder = self.define_autoencoder()
         history = auto_encoder.fit(*args, **kwargs)
         print("Variational autoencoder trained.\n")
@@ -572,23 +534,6 @@ class ConvolutionalVAE:
         self.save_model_weights(decoder, "decoder")
 
         self.plot_results((encoder, decoder))
-
-    def train_contrastive_mlp(self):
-        """
-        Begin logging, train the contrastive MLP, use the it's history to plot loss curves, and save the parameters
-        to .h5 files.
-        :return: None
-        """
-        if self.enable_logging:
-            logs.begin_logging(self.directory)
-
-        contrastive_mlp, history = self.fit_contrastive_mlp()
-
-        plots.plot_loss_curves(history, self.image_directory)
-
-        self.save_model_weights(contrastive_mlp, "contrastive_mlp")
-
-        # self.plot_results((encoder, decoder))
 
 
 vae = ConvolutionalVAE(number_of_epochs=12,

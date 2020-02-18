@@ -464,11 +464,11 @@ class DenseVAE:
         self.plot_results((encoder, decoder))
 
 
-vae = DenseVAE(number_of_epochs=10,
+vae = DenseVAE(number_of_epochs=100,
                enable_logging=True,
                enable_stochastic_gradient_descent=True,
-               encoder_activation='tanh',
-               decoder_activation='tanh',
+               encoder_activation='relu',
+               decoder_activation='relu',
                final_activation='sigmoid',
                learning_rate_initial=1e-2,
                has_validation_set=True)
