@@ -23,7 +23,7 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
 
-class VariationalAutoencoder:
+class DenseVAE:
 
     @classmethod
     def get_split_mnist_data(cls, val_size=0.5):
@@ -132,7 +132,7 @@ class VariationalAutoencoder:
             if self.has_validation_set:
                 self.x_train, self.y_train, \
                 self.x_val, self.y_val, \
-                self.x_test, self.y_test = VariationalAutoencoder.get_split_mnist_data()
+                self.x_test, self.y_test = DenseVAE.get_split_mnist_data()
             else:
                 (self.x_train, self.y_train), (self.x_test, self.y_test) = mnist.load_data()
 
@@ -463,13 +463,13 @@ class VariationalAutoencoder:
         self.plot_results((encoder, decoder))
 
 
-vae = VariationalAutoencoder(number_of_epochs=100,
-                             enable_logging=True,
-                             enable_stochastic_gradient_descent=True,
-                             encoder_activation='tanh',
-                             decoder_activation='tanh',
-                             final_activation='sigmoid',
-                             learning_rate_initial=1e-2,
-                             has_validation_set=True)
+vae = DenseVAE(number_of_epochs=100,
+               enable_logging=True,
+               enable_stochastic_gradient_descent=True,
+               encoder_activation='tanh',
+               decoder_activation='tanh',
+               final_activation='sigmoid',
+               learning_rate_initial=1e-2,
+               has_validation_set=True)
 vae.train()
 del vae

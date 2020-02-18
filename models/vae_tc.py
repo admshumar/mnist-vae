@@ -23,7 +23,7 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
 
-class ConvolutionalVAE:
+class BetaTCVAE:
 
     @classmethod
     def get_split_mnist_data(cls, val_size=0.5):
@@ -132,7 +132,7 @@ class ConvolutionalVAE:
             if self.has_validation_set:
                 self.x_train, self.y_train, \
                 self.x_val, self.y_val, \
-                self.x_test, self.y_test = ConvolutionalVAE.get_split_mnist_data()
+                self.x_test, self.y_test = BetaTCVAE.get_split_mnist_data()
             else:
                 (self.x_train, self.y_train), (self.x_test, self.y_test) = mnist.load_data()
 
@@ -497,16 +497,16 @@ class ConvolutionalVAE:
         self.plot_results((encoder, decoder))
 
 
-vae = ConvolutionalVAE(number_of_epochs=12,
-                       enable_dropout=True,
-                       enable_logging=True,
-                       enable_batch_normalization=True,
-                       enable_stochastic_gradient_descent=True,
-                       encoder_activation='relu',
-                       decoder_activation='relu',
-                       final_activation='sigmoid',
-                       learning_rate_initial=1e-2,
-                       has_validation_set=True,
-                       beta=2)
-vae.train()
+vae = BetaTCVAE(number_of_epochs=12,
+                enable_dropout=True,
+                enable_logging=True,
+                enable_batch_normalization=True,
+                enable_stochastic_gradient_descent=True,
+                encoder_activation='relu',
+                decoder_activation='relu',
+                final_activation='sigmoid',
+                learning_rate_initial=1e-2,
+                has_validation_set=True,
+                beta=2)
+vae.define_autoencoder()
 del vae
