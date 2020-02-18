@@ -109,7 +109,7 @@ class ConvolutionalVAE:
             insufficient change in the validation loss.
         :param beta: A float indicating the beta hyperparameter for a beta-variational autoencoder. Default is 0.
         """
-        self.model_name = "vae_conv"
+        self.model_name = "contrastive_mlp"
         self.enable_logging = enable_logging
         self.enable_label_smoothing = enable_label_smoothing
         self.deep = deep
