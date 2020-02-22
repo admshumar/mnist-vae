@@ -14,6 +14,7 @@ from tensorflow.keras.datasets import mnist
 from tensorflow.keras.layers import *
 from tensorflow.keras.models import Model
 from tensorflow.keras.utils import plot_model
+from tensorflow.keras.utils import to_categorical
 
 from models.layers.vae_layers import Reparametrization
 from models.losses.losses import EncodingLoss
@@ -24,7 +25,7 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
 
-class ConvolutionalVAE:
+class ContrastiveMLP:
 
     @classmethod
     def get_split_mnist_data(cls, val_size=0.5):
@@ -70,7 +71,7 @@ class ConvolutionalVAE:
                  final_activation='sigmoid',
                  dropout_rate=0.2,
                  l2_constant=1e-4,
-                 early_stopping_delta=1,
+                 early_stopping_delta=1e-5,
                  beta=1,
                  enable_logging=True
                  ):
@@ -133,7 +134,7 @@ class ConvolutionalVAE:
         self.has_validation_set = has_validation_set
         if self.is_mnist:
             if self.has_validation_set:
-                x_train, y_train, x_val, y_val, x_test, y_test = ConvolutionalVAE.get_split_mnist_data()
+                x_train, y_train, x_val, y_val, x_test, y_test = ContrastiveMLP.get_split_mnist_data()
 
                 if self.is_restricted:
                     x_train, y_train = operations.restrict_data_by_label(x_train, y_train, restriction_labels)
@@ -144,9 +145,9 @@ class ConvolutionalVAE:
                     = x_train, y_train, x_val, y_val, x_test, y_test
 
                 if self.enable_label_smoothing:
-                    self.y_train_smooth = labels.Smoother(y_train, alpha=smoothing_alpha).smooth()
-                    self.y_val_smooth = labels.Smoother(y_val, alpha=smoothing_alpha).smooth()
-                    self.y_test_smooth = labels.Smoother(y_test, alpha=smoothing_alpha).smooth()
+                    self.y_train_categorical = to_categorical(y_train)
+                    self.y_val_categorical = to_categorical(y_val)
+                    self.y_test_categorical = to_categorical(y_test)
             else:
                 (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
@@ -157,8 +158,8 @@ class ConvolutionalVAE:
                 self.x_train, self.y_train, self.x_test, self.y_test = x_train, y_train, x_test, y_test
 
                 if self.enable_label_smoothing:
-                    self.y_train_smooth = labels.Smoother(y_train, alpha=smoothing_alpha).smooth()
-                    self.y_test_smooth = labels.Smoother(y_test, alpha=smoothing_alpha).smooth()
+                    self.y_train_categorical = to_categorical(y_train)
+                    self.y_test_categorical = to_categorical(y_test)
 
             self.data_width, self.data_height = self.x_train.shape[1], self.x_train.shape[2]
             self.data_dimension = self.data_width * self.data_height
@@ -317,7 +318,7 @@ class ConvolutionalVAE:
         gaussian = decoder_gaussian_input
         convolution_dimension = 784
 
-        # Needed to prevent Keras from complaining that nothing was done to this tensor:
+        # Hack to prevent Keras from complaining that nothing was done to this tensor:
         identity_lambda = Lambda(lambda w: w, name="dec_identity_lambda")
         gaussian = identity_lambda(gaussian)
 
@@ -386,17 +387,17 @@ class ConvolutionalVAE:
             z = Dropout(rate=self.dropout_rate, seed=17)(z)
 
         z = Flatten()(z)
-        z = Dense(2, name="latent_representation", activation=self.encoder_activation)(z)
-        z = Dense(2, name="contrast_representation", activation='softmax')(z)
+        latent_representation = Dense(10, name="latent_representation", activation=self.encoder_activation)(z)
+        z = Dense(10, name="contrast_representation", activation='softmax')(latent_representation)
         contrastive_mlp_output = z
 
         contrastive_mlp = Model(self.encoder_mnist_input, contrastive_mlp_output, name='constrastive_mlp')
         contrastive_mlp.summary()
 
         plot_model(contrastive_mlp, to_file=os.path.join(self.image_directory, 'contrastive_mlp.png'), show_shapes=True)
-        contrastive_mlp.compile(optimizers.Adam(lr=self.learning_rate), loss='kld')
+        contrastive_mlp.compile(optimizers.Adam(lr=self.learning_rate),
+                                loss=CategoricalCrossentropy(label_smoothing=True))
         return contrastive_mlp, z
-
 
     def get_generic_fit_kwargs(self):
         """
@@ -415,7 +416,18 @@ class ConvolutionalVAE:
         the Keras model.
         :return: A list of arguments for the fit method of the Keras model.
         """
-        return [self.x_train, self.y_train]
+        return [self.x_train, self.y_train_categorical]
+
+    def get_contrastive_mlp_fit_kwargs(self):
+        """
+        Construct keyword arguments for fitting the Keras model. This is useful for conditioning the model's training
+        on the presence of a validation set.
+        :return: A dictionary of keyword arguments for the fit method of the Keras model.
+        """
+        fit_kwargs = self.get_generic_fit_kwargs()
+        if self.has_validation_set:
+            fit_kwargs['validation_data'] = ([self.x_val, self.y_val_categorical])
+        return fit_kwargs
 
     def get_autoencoder_fit_args(self):
         """
@@ -451,7 +463,7 @@ class ConvolutionalVAE:
 
     def fit_contrastive_mlp(self):
         args = self.get_contrastive_mlp_fit_args()
-        kwargs = self.get_generic_fit_kwargs()
+        kwargs = self.get_contrastive_mlp_fit_kwargs()
         contrastive_mlp, _ = self.define_contrastive_mlp()
         history = contrastive_mlp.fit(*args, **kwargs)
         print("Contrastive MLP trained.\n")
@@ -494,32 +506,12 @@ class ConvolutionalVAE:
 
         model.save_weights(model_filepath)
 
-    def plot_results(self, models):
-        """Plots labels and MNIST digits as a function of the 2D latent vector
+    def plot_logits(self, contrastive_mlp):
+        logits = contrastive_mlp.layers[-2].output
+        visualizer_model = Model(contrastive_mlp.inputs, logits)
+        print(visualizer_model.predict(self.x_test))
 
-        # Arguments
-            models (tuple): encoder and decoder models
-            data (tuple): test data and label
-            batch_size (int): prediction batch size
-            model_name (string): which model is using this function
-        """
-        encoder, decoder = models
-        test_gaussian = operations.get_gaussian_parameters(self.x_test)
-        os.makedirs(self.image_directory, exist_ok=True)
-        filename = os.path.join(self.image_directory, "vae_mean.png")
-
-        # display a 2D plot of the digit classes in the latent space
-        z_gaussian, z_mnist = encoder.predict([test_gaussian, self.x_test], batch_size=self.batch_size)
-        z_mean, z_covariance = operations.split_gaussian_parameters(z_gaussian)
-        plt.figure(figsize=(12, 10))
-        plt.scatter(z_mean[:, 0], z_mean[:, 1], c=self.y_test)
-        plt.colorbar()
-        plt.xlabel("z[0]")
-        plt.ylabel("z[1]")
-        plt.savefig(filename)
-        if self.show:
-            plt.show()
-
+    def plot_mnist_digits(self, decoder):
         filename = os.path.join(self.image_directory, "digits_over_latent.png")
         # display a 30x30 2D manifold of digits
         n = 30
@@ -529,7 +521,6 @@ class ConvolutionalVAE:
         # of digit classes in the latent space
         grid_x = np.linspace(-4, 4, n)
         grid_y = np.linspace(-4.5, 3.5, n)[::-1]
-
         for i, yi in enumerate(grid_y):
             for j, xi in enumerate(grid_x):
                 dummy_gaussian = np.array([[0, 0, 1, 1]])
@@ -553,6 +544,10 @@ class ConvolutionalVAE:
         plt.savefig(filename)
         if self.show:
             plt.show()
+
+    def plot_results(self, models):
+        contrastive_mlp = models
+        self.plot_logits(contrastive_mlp)
 
     def train_autoencoder(self):
         """
@@ -588,23 +583,25 @@ class ConvolutionalVAE:
 
         self.save_model_weights(contrastive_mlp, "contrastive_mlp")
 
-        # self.plot_results((encoder, decoder))
+        self.plot_logits(contrastive_mlp)
 
 
-vae = ConvolutionalVAE(number_of_epochs=12,
-                       is_restricted=True,
-                       restriction_labels=[6, 9],
-                       enable_dropout=True,
-                       enable_label_smoothing=False,
-                       smoothing_alpha=.5,
-                       enable_logging=True,
-                       enable_batch_normalization=True,
-                       enable_stochastic_gradient_descent=True,
-                       encoder_activation='relu',
-                       decoder_activation='relu',
-                       final_activation='sigmoid',
-                       learning_rate_initial=1e-2,
-                       has_validation_set=True,
-                       beta=2)
+vae = ContrastiveMLP(number_of_epochs=100,
+                     is_restricted=True,
+                     restriction_labels=[6, 9],
+                     enable_dropout=True,
+                     enable_label_smoothing=True,
+                     smoothing_alpha=.5,
+                     enable_logging=True,
+                     enable_batch_normalization=True,
+                     enable_stochastic_gradient_descent=True,
+                     encoder_activation='relu',
+                     decoder_activation='relu',
+                     final_activation='sigmoid',
+                     learning_rate_initial=1e-2,
+                     has_validation_set=True,
+                     beta=2)
+
 vae.train_contrastive_mlp()
+
 del vae

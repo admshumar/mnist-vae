@@ -16,9 +16,12 @@ from tensorflow.keras.utils import plot_model
 
 from models.layers import vae_layers
 from models.losses.losses import EncodingLoss
-from utils import logs, operations, plots, directories
+from utils import logs, operations, plots, directories, labels
+from utils.augmenters import Rotator
 
+from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import train_test_split
+
 
 import matplotlib.pyplot as plt
 
@@ -69,7 +72,11 @@ class DenseVAE:
                  l2_constant=1e-4,
                  early_stopping_delta=1,
                  beta=1,
-                 enable_logging=True
+                 enable_logging=True,
+                 smoothing_alpha=0.5,
+                 enable_label_smoothing=False,
+                 enable_early_stopping=False,
+                 enable_rotations=False
                  ):
         """
         For an MNIST variational autoencoder, we have the usual options that control network hyperparameters. In
@@ -108,10 +115,13 @@ class DenseVAE:
         """
         self.model_name = "vae_dense"
         self.enable_logging = enable_logging
+        self.enable_label_smoothing = enable_label_smoothing
         self.deep = deep
         self.is_mnist = is_mnist
         self.is_restricted = is_restricted
         self.restriction_labels = restriction_labels
+        self.enable_early_stopping = enable_early_stopping and has_validation_set
+        self.enable_rotations = enable_rotations
 
         if self.is_restricted:
             self.number_of_clusters = len(self.restriction_labels)
@@ -131,19 +141,52 @@ class DenseVAE:
         self.has_validation_set = has_validation_set
         if self.is_mnist:
             if self.has_validation_set:
-                self.x_train, self.y_train, \
-                self.x_val, self.y_val, \
-                self.x_test, self.y_test = DenseVAE.get_split_mnist_data()
+                x_train, y_train, x_val, y_val, x_test, y_test = DenseVAE.get_split_mnist_data()
+
+                if self.is_restricted:
+                    x_train, y_train = operations.restrict_data_by_label(x_train, y_train, restriction_labels)
+                    x_val, y_val = operations.restrict_data_by_label(x_val, y_val, restriction_labels)
+                    x_test, y_test = operations.restrict_data_by_label(x_test, y_test, restriction_labels)
+
+                if enable_rotations:
+                    x_train = Rotator(x_train).append_rotated_images()
+                    x_val = Rotator(x_val).append_rotated_images()
+                    x_test = Rotator(x_test).append_rotated_images()
+
+                self.x_train, self.y_train, self.x_val, self.y_val, self.x_test, self.y_test \
+                    = x_train, y_train, x_val, y_val, x_test, y_test
+
+                if self.enable_label_smoothing:
+                    self.y_train_smooth = labels.Smoother(y_train, alpha=smoothing_alpha).smooth()
+                    self.y_val_smooth = labels.Smoother(y_val, alpha=smoothing_alpha).smooth()
+                    self.y_test_smooth = labels.Smoother(y_test, alpha=smoothing_alpha).smooth()
+
             else:
-                (self.x_train, self.y_train), (self.x_test, self.y_test) = mnist.load_data()
+                (x_train, y_train), (x_test, y_test) = mnist.load_data()
+
+                if self.is_restricted:
+                    x_train, y_train = operations.restrict_data_by_label(x_train, y_train, restriction_labels)
+                    x_test, y_test = operations.restrict_data_by_label(x_test, y_test, restriction_labels)
+
+                if enable_rotations:
+                    print("Rotations enabled!")
+                    x_train = Rotator(x_train).append_rotated_images()
+                    x_test = Rotator(x_test).append_rotated_images()
+
+                self.x_train, self.y_train, self.x_test, self.y_test = x_train, y_train, x_test, y_test
+
+                if self.enable_label_smoothing:
+                    self.y_train_smooth = labels.Smoother(y_train, alpha=smoothing_alpha).smooth()
+                    self.y_test_smooth = labels.Smoother(y_test, alpha=smoothing_alpha).smooth()
 
             self.data_width, self.data_height = self.x_train.shape[1], self.x_train.shape[2]
             self.data_dimension = self.data_width * self.data_height
             self.intermediate_dimension = intermediate_dimension
 
             self.x_train = operations.normalize(self.x_train)
-            self.x_val = operations.normalize(self.x_val)
             self.x_test = operations.normalize(self.x_test)
+            if self.has_validation_set:
+                self.x_val = operations.normalize(self.x_val)
 
             self.gaussian_train = operations.get_gaussian_parameters(self.x_train)
             self.gaussian_val = operations.get_gaussian_parameters(self.x_test)
@@ -294,6 +337,10 @@ class DenseVAE:
         return decoder
 
     def define_autoencoder(self):
+        """
+        Define the encoder and decoder models,
+        :return:
+        """
         encoder, z = self.define_encoder()
         decoder = self.define_decoder(z)
 
@@ -327,7 +374,10 @@ class DenseVAE:
         fit_kwargs = dict()
         fit_kwargs['epochs'] = self.number_of_epochs
         fit_kwargs['batch_size'] = self.batch_size
-        fit_kwargs['callbacks'] = [self.early_stopping_callback, self.nan_termination_callback]
+        if self.has_validation_set and self.enable_early_stopping:
+            fit_kwargs['callbacks'] = [self.early_stopping_callback, self.nan_termination_callback]
+        else:
+            fit_kwargs['callbacks'] = [self.nan_termination_callback]
         if self.has_validation_set:
             fit_kwargs['validation_data'] = ([self.gaussian_val, self.x_val], [self.gaussian_val, self.x_val])
         return fit_kwargs
@@ -365,6 +415,24 @@ class DenseVAE:
         """
         # data = samples in the latent space.
         # return self.predict(decoder, data)
+
+    def assign_soft_labels(self, x_train_latent, x_test_latent):
+        """
+        Fit a Gaussian mixture model to a latent representation of training data, then use the components in the
+        mixture model to return a collection of class probabilities.
+        class probabilities for a latent representation of test data.
+        :param x_train_latent: A NumPy data array.
+        :param x_test_latent: A NumPy data array.
+        :return: A NumPy data array of soft class probabilities.
+        """
+        mixture_model = GaussianMixture(self.number_of_clusters)
+        mixture_model.fit(x_train_latent)
+        # Get the parameters for each Gaussian density in the mixture model, then fire up SciPy to compute the density
+        # values for each data point in the latent representation.
+        soft_labels = None # Here, the soft labels are gotten from the densities of each Gaussian
+        print(soft_labels)
+        return soft_labels
+
 
     def save_model_weights(self, autoencoder, encoder, decoder):
         """
@@ -448,8 +516,7 @@ class DenseVAE:
 
     def train(self):
         """
-        Begin logging, train_contrastive_mlp the autoencoder, use the autoencoder's history to plot loss curves, and save the parameters
-        of the autoencoder, encoder, and decoder (respectively) to .h5 files.
+        Begin logging, train the autoencoder, use the autoencoder's history to plot loss curves, and save the parameters of the autoencoder, encoder, and decoder (respectively) to .h5 files.
         :return: None
         """
         if self.enable_logging:
@@ -465,12 +532,15 @@ class DenseVAE:
 
 
 vae = DenseVAE(number_of_epochs=100,
+               is_restricted=True,
+               restriction_labels=[3, 8],
                enable_logging=True,
+               enable_rotations=True,
                enable_stochastic_gradient_descent=True,
                encoder_activation='relu',
                decoder_activation='relu',
                final_activation='sigmoid',
                learning_rate_initial=1e-2,
-               has_validation_set=True)
+               beta=1)
 vae.train()
 del vae
