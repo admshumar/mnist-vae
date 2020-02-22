@@ -17,7 +17,7 @@ from tensorflow.keras.utils import plot_model
 from models.layers import vae_layers
 from models.losses.losses import EncodingLoss
 from utils import logs, operations, plots, directories, labels
-from utils.augmenters import Rotator
+from utils.augmenters import MNISTRotator
 
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import train_test_split
@@ -149,9 +149,9 @@ class DenseVAE:
                     x_test, y_test = operations.restrict_data_by_label(x_test, y_test, restriction_labels)
 
                 if enable_rotations:
-                    x_train = Rotator(x_train).append_rotated_images()
-                    x_val = Rotator(x_val).append_rotated_images()
-                    x_test = Rotator(x_test).append_rotated_images()
+                    x_train = MNISTRotator(x_train).append_rotated_images()
+                    x_val = MNISTRotator(x_val).append_rotated_images()
+                    x_test = MNISTRotator(x_test).append_rotated_images()
 
                 self.x_train, self.y_train, self.x_val, self.y_val, self.x_test, self.y_test \
                     = x_train, y_train, x_val, y_val, x_test, y_test
@@ -170,8 +170,8 @@ class DenseVAE:
 
                 if enable_rotations:
                     print("Rotations enabled!")
-                    x_train = Rotator(x_train).append_rotated_images()
-                    x_test = Rotator(x_test).append_rotated_images()
+                    x_train = MNISTRotator(x_train).append_rotated_images()
+                    x_test = MNISTRotator(x_test).append_rotated_images()
 
                 self.x_train, self.y_train, self.x_test, self.y_test = x_train, y_train, x_test, y_test
 

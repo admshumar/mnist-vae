@@ -39,13 +39,12 @@ class Rotator():
         if self.number_of_rotations is None:
             self.number_of_rotations = 2
         augmented_data = self.data
-        for k in range(self.data_length):
-            print(f"Augmenting data point {k}")
-            for j in range(1, self.number_of_rotations + 1):
-                image = self.data[k]
-                image = ndimage.rotate(image, j * self.angle_of_rotation, reshape=False)
-                image = np.reshape(image, (1, 28, 28))
-                augmented_data = np.append(augmented_data, image, axis=0)
+        for j in range(1, self.number_of_rotations + 1):
+            theta = j * self.angle_of_rotation
+            print(f"Rotating by angle {theta}")
+            image = self.data
+            image = ndimage.rotate(image, j * self.angle_of_rotation, axes=(2, 1), reshape=False)
+            augmented_data = np.concatenate((augmented_data, image))
         np.random.shuffle(augmented_data)
         t1 = time()
         t = t1 - t0
@@ -70,6 +69,7 @@ class Rotator():
         for i in range(len(data)):
             self.view_image(data[i])
 
+
 class MNISTRotator(Rotator):
     def __init__(self, list_of_digits, number_of_rotations=2, angle_of_rotation=30):
         (x_train, y_train), (_, _) = mnist.load_data()
@@ -79,8 +79,6 @@ class MNISTRotator(Rotator):
         super(MNISTRotator, self).__init__(data,
                                            number_of_rotations=number_of_rotations,
                                            angle_of_rotation=angle_of_rotation)
+
     def augment(self):
         self.save(self.list_of_digits)
-
-rotator = MNISTRotator([5,6], number_of_rotations=11)
-rotator.augment()
