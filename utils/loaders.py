@@ -28,7 +28,6 @@ class MNISTLoader:
         for digit in list_of_digits:
             new_data = self.get_file(digit, number_of_rotations, angle_of_rotation, label=label)
             data = np.concatenate((data, new_data))
-        np.random.shuffle(data)
         t1 = time()
         t = t1 - t0
         print(f"Data loaded in {t} seconds.")

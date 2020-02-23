@@ -98,6 +98,13 @@ class VAE:
                                                         stratify=y_test)
         return x_train, y_train, x_val, y_val, x_test, y_test
 
+    @classmethod
+    def shuffle(cls, data, labels):
+        assert len(data) == len(labels)
+        permutation = np.random.permutation(len(data))
+        return data[permutation], labels[permutation]
+
+
     def __init__(self,
                  deep=True,
                  enable_activation=True,
@@ -136,6 +143,7 @@ class VAE:
                  decoder_activation='relu',
                  final_activation='sigmoid',
                  model_name='vae'):
+
         self.model_name = model_name
         self.enable_logging = enable_logging
         self.enable_label_smoothing = enable_label_smoothing
@@ -198,12 +206,15 @@ class VAE:
                     print("Rotations enabled!")
                     x_train = MNISTLoader('train').load(restriction_labels, number_of_rotations,
                                                         angle_of_rotation)
-                    x_test = MNISTLoader('test').load(restriction_labels, number_of_rotations,
-                                                      angle_of_rotation)
                     y_train = MNISTLoader('train').load(restriction_labels, number_of_rotations,
                                                         angle_of_rotation, label=True)
+                    x_train, y_train = VAE.shuffle(x_train, y_train)
+
+                    x_test = MNISTLoader('test').load(restriction_labels, number_of_rotations,
+                                                      angle_of_rotation)
                     y_test = MNISTLoader('test').load(restriction_labels, number_of_rotations,
                                                       angle_of_rotation, label=True)
+                    x_test, y_test = VAE.shuffle(x_test, y_test)
 
                 self.x_train, self.y_train, self.x_test, self.y_test = x_train, y_train, x_test, y_test
 
@@ -253,10 +264,6 @@ class VAE:
         self.gaussian_dimension = 2 * self.latent_dim
 
         self.beta = max(beta, 1)
-        if self.beta > 1:
-            self.enable_beta = True
-        else:
-            self.enable_beta = False
 
         self.hyper_parameter_list = [self.number_of_epochs,
                                      self.batch_size,
@@ -266,8 +273,6 @@ class VAE:
                                      self.enable_batch_normalization,
                                      self.enable_dropout,
                                      self.dropout_rate,
-                                     self.enable_beta,
-                                     self.beta,
                                      self.l2_constant,
                                      self.patience_limit,
                                      self.early_stopping_delta,
@@ -277,10 +282,7 @@ class VAE:
             self.hyper_parameter_list.append("mnist")
 
         if self.is_restricted:
-            restriction_label_string = ''
-            for label in restriction_labels:
-                restriction_label_string += str(label)
-                self.hyper_parameter_list.append("restricted_{}".format(restriction_label_string))
+            self.hyper_parameter_list.append(f"restricted_{str(restriction_labels)}")
 
         if self.enable_augmentation:
             augmentation_string = "_".join(["augmented", str(covariance_coefficient), str(augmentation_size)])
@@ -291,6 +293,9 @@ class VAE:
 
         if self.enable_rotations:
             self.hyper_parameter_list.append(f"rotated_{number_of_rotations},{angle_of_rotation}")
+
+        if beta > 1:
+            self.hyper_parameter_list.append(f"beta_{beta}")
 
         self.hyper_parameter_string = '_'.join([str(i) for i in self.hyper_parameter_list])
 
