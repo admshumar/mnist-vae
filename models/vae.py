@@ -282,7 +282,10 @@ class VAE:
             self.hyper_parameter_list.append("mnist")
 
         if self.is_restricted:
-            self.hyper_parameter_list.append(f"restricted_{str(restriction_labels)}")
+            restriction_string = ''
+            for number in restriction_labels:
+                restriction_string += str(number) + ','
+            self.hyper_parameter_list.append(f"restricted_{restriction_string[:-1]}")
 
         if self.enable_augmentation:
             augmentation_string = "_".join(["augmented", str(covariance_coefficient), str(augmentation_size)])

@@ -7,7 +7,7 @@ class DirectoryCounter:
     A class that counts the number of directories with a matching hyperparameter string.
     """
     @classmethod
-    def make_root_directory(cls):
+    def get_root_directory(cls):
         """
         Make a root directory.
         :return: A string corresponding to the root directory.
@@ -33,7 +33,7 @@ class DirectoryCounter:
         return output_directory
 
     def __init__(self, hyperparameter_string):
-        self.data_directory = DirectoryCounter.make_root_directory()
+        self.data_directory = DirectoryCounter.get_root_directory()
         self.regex = re.compile(hyperparameter_string)
 
     def count(self):
