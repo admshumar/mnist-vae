@@ -3,30 +3,21 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import numpy as np
 import tensorflow
 
 import tensorflow.keras.backend as k
 from tensorflow.keras import optimizers
-from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ReduceLROnPlateau, TerminateOnNaN
-from tensorflow.keras.datasets import mnist
 from tensorflow.keras.layers import *
 from tensorflow.keras.models import Model
 from tensorflow.keras.utils import plot_model
 
-from models.layers import vae_layers
 from models.losses.losses import EncodingLoss
-from utils import logs, operations, plots, directories, labels
-from utils.loaders import MNISTLoader
+from utils import logs, plots
 from models.vae import VAE
-
-from sklearn.mixture import GaussianMixture
-from sklearn.model_selection import train_test_split
-
-import matplotlib.pyplot as plt
+from models.layers.vae_layers import Reparametrization
 
 
-class DenseVAE(VAE):
+class ConvolutionalVAE(VAE):
     def __init__(self,
                  deep=True,
                  enable_activation=True,
@@ -65,52 +56,64 @@ class DenseVAE(VAE):
                  decoder_activation='relu',
                  final_activation='sigmoid',
                  ):
-        model_name = 'vae_test'
-        super(DenseVAE, self).__init__(deep=deep,
-                                       enable_activation=enable_activation,
-                                       enable_augmentation=enable_augmentation,
-                                       enable_batch_normalization=enable_batch_normalization,
-                                       enable_dropout=enable_dropout,
-                                       enable_early_stopping=enable_early_stopping,
-                                       enable_logging=enable_logging,
-                                       enable_label_smoothing=enable_label_smoothing,
-                                       enable_rotations=enable_rotations,
-                                       enable_stochastic_gradient_descent=enable_stochastic_gradient_descent,
-                                       has_custom_layers=has_custom_layers,
-                                       has_validation_set=has_validation_set,
-                                       is_mnist=is_mnist,
-                                       is_restricted=is_restricted,
-                                       is_standardized=is_standardized,
-                                       show=show,
-                                       number_of_clusters=number_of_clusters,
-                                       restriction_labels=restriction_labels,
-                                       intermediate_dimension=intermediate_dimension,
-                                       exponent_of_latent_space_dimension=exponent_of_latent_space_dimension,
-                                       augmentation_size=augmentation_size,
-                                       covariance_coefficient=covariance_coefficient,
-                                       number_of_epochs=number_of_epochs,
-                                       batch_size=batch_size,
-                                       learning_rate_initial=learning_rate_initial,
-                                       learning_rate_minimum=learning_rate_minimum,
-                                       dropout_rate=dropout_rate,
-                                       l2_constant=l2_constant,
-                                       early_stopping_delta=early_stopping_delta,
-                                       beta=beta,
-                                       smoothing_alpha=smoothing_alpha,
-                                       number_of_rotations=number_of_rotations,
-                                       angle_of_rotation=angle_of_rotation,
-                                       encoder_activation=encoder_activation,
-                                       decoder_activation=decoder_activation,
-                                       final_activation=final_activation,
-                                       model_name=model_name)
+        model_name = 'vae_conv'
+        super(ConvolutionalVAE, self).__init__(deep=deep,
+                                               enable_activation=enable_activation,
+                                               enable_augmentation=enable_augmentation,
+                                               enable_batch_normalization=enable_batch_normalization,
+                                               enable_dropout=enable_dropout,
+                                               enable_early_stopping=enable_early_stopping,
+                                               enable_logging=enable_logging,
+                                               enable_label_smoothing=enable_label_smoothing,
+                                               enable_rotations=enable_rotations,
+                                               enable_stochastic_gradient_descent=enable_stochastic_gradient_descent,
+                                               has_custom_layers=has_custom_layers,
+                                               has_validation_set=has_validation_set,
+                                               is_mnist=is_mnist,
+                                               is_restricted=is_restricted,
+                                               is_standardized=is_standardized,
+                                               show=show,
+                                               number_of_clusters=number_of_clusters,
+                                               restriction_labels=restriction_labels,
+                                               intermediate_dimension=intermediate_dimension,
+                                               exponent_of_latent_space_dimension=exponent_of_latent_space_dimension,
+                                               augmentation_size=augmentation_size,
+                                               covariance_coefficient=covariance_coefficient,
+                                               number_of_epochs=number_of_epochs,
+                                               batch_size=batch_size,
+                                               learning_rate_initial=learning_rate_initial,
+                                               learning_rate_minimum=learning_rate_minimum,
+                                               dropout_rate=dropout_rate,
+                                               l2_constant=l2_constant,
+                                               early_stopping_delta=early_stopping_delta,
+                                               beta=beta,
+                                               smoothing_alpha=smoothing_alpha,
+                                               number_of_rotations=number_of_rotations,
+                                               angle_of_rotation=angle_of_rotation,
+                                               encoder_activation=encoder_activation,
+                                               decoder_activation=decoder_activation,
+                                               final_activation=final_activation,
+                                               model_name=model_name)
 
     def define_encoder(self):
         z = self.encoder_mnist_input
-        z = Flatten()(z)
-        z = Dense(self.intermediate_dimension, activation=self.encoder_activation)(z)
+        z = Reshape((28, 28, 1))(z)
 
+        z = Conv2D(8, kernel_size=(3, 3), strides=(2, 2), padding='same', activation=self.encoder_activation)(z)
+        if self.enable_batch_normalization:
+            z = BatchNormalization()(z)
+        if self.enable_dropout:
+            z = Dropout(rate=self.dropout_rate, seed=17)(z)
+
+        z = Conv2D(16, kernel_size=(3, 3), strides=(2, 2), padding='same', activation=self.encoder_activation)(z)
+        if self.enable_batch_normalization:
+            z = BatchNormalization()(z)
+        if self.enable_dropout:
+            z = Dropout(rate=self.dropout_rate, seed=17)(z)
+
+        z = Flatten()(z)
         z_gaussian = Dense(self.gaussian_dimension, name="gaussian")(z)
-        z = vae_layers.Reparametrization(name="latent_samples")(z_gaussian)
+        z = Reparametrization(name="latent_samples")(z_gaussian)
         encoder_output = [z_gaussian, z]
 
         encoder = Model([self.encoder_gaussian, self.encoder_mnist_input], encoder_output, name='encoder')
@@ -124,14 +127,33 @@ class DenseVAE(VAE):
         decoder_latent_input = Input(shape=encoder_output[1].shape[1:], name='latent_input')
         x = decoder_latent_input
         gaussian = decoder_gaussian_input
+        convolution_dimension = 784
 
         # Needed to prevent Keras from complaining that nothing was done to this tensor:
         identity_lambda = Lambda(lambda w: w, name="dec_identity_lambda")
         gaussian = identity_lambda(gaussian)
 
-        x = Dense(self.intermediate_dimension, activation=self.decoder_activation)(x)
+        x = Dense(convolution_dimension, activation=self.decoder_activation)(x)
+        x = Reshape((7, 7, 16))(x)
+        x = Conv2DTranspose(8,
+                            kernel_size=(3, 3),
+                            strides=(2, 2),
+                            padding='same',
+                            activation=self.decoder_activation)(x)
+        if self.enable_batch_normalization:
+            x = BatchNormalization()(x)
+        if self.enable_dropout:
+            x = Dropout(rate=self.dropout_rate, seed=17)(x)
 
-        x = Dense(self.data_dimension, activation=self.final_activation)(x)
+        x = Conv2DTranspose(1,
+                            kernel_size=(3, 3),
+                            strides=(2, 2),
+                            padding='same',
+                            activation=self.decoder_activation)(x)
+        if self.enable_batch_normalization:
+            x = BatchNormalization()(x)
+        if self.enable_dropout:
+            x = Dropout(rate=self.dropout_rate, seed=17)(x)
 
         x = Reshape((28, 28))(x)
 
@@ -143,10 +165,6 @@ class DenseVAE(VAE):
         return decoder
 
     def define_autoencoder(self):
-        """
-        Define the encoder and decoder models,
-        :return:
-        """
         encoder, z = self.define_encoder()
         decoder = self.define_decoder(z)
 
@@ -239,18 +257,18 @@ class DenseVAE(VAE):
         # return self.predict(decoder, data)
 
 
-vae = DenseVAE(number_of_epochs=25,
-               is_restricted=True,
-               restriction_labels=[6, 9],
-               enable_logging=True,
-               enable_rotations=True,
-               number_of_rotations=11,
-               angle_of_rotation=30,
-               enable_stochastic_gradient_descent=True,
-               encoder_activation='relu',
-               decoder_activation='relu',
-               final_activation='sigmoid',
-               learning_rate_initial=1e-2,
-               beta=1)
+vae = ConvolutionalVAE(number_of_epochs=25,
+                       is_restricted=True,
+                       restriction_labels=[2],
+                       enable_logging=True,
+                       enable_rotations=True,
+                       number_of_rotations=11,
+                       angle_of_rotation=30,
+                       enable_stochastic_gradient_descent=True,
+                       encoder_activation='relu',
+                       decoder_activation='relu',
+                       final_activation='sigmoid',
+                       learning_rate_initial=1e-2,
+                       beta=1.5)
 vae.train()
 del vae
