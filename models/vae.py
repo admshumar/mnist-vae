@@ -22,11 +22,67 @@ from utils.loaders import MNISTLoader
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import train_test_split
 
-
 import matplotlib.pyplot as plt
 
 
-class DenseVAE:
+class VAE:
+    """
+    Base class for variational autoencoders, from which all autoencoder models inherit.
+    """
+
+    @classmethod
+    def get_kwargs(cls):
+        """
+        Factory method for the default keyword arguments for the VAE class constructor.
+        :return: A dictionary of boolean valued keyword arguments.
+        """
+        kwargs = dict()
+
+        """
+        Boolean valued keyword arguments
+        """
+        kwargs['deep'] = True
+        kwargs['enable_activation'] = True
+        kwargs['enable_augmentation'] = False
+        kwargs['enable_batch_normalization'] = True
+        kwargs['enable_dropout'] = True
+        kwargs['enable_early_stopping'] = False
+        kwargs['enable_logging'] = True
+        kwargs['enable_label_smoothing'] = False
+        kwargs['enable_rotations'] = False
+        kwargs['enable_stochastic_gradient_descent'] = False
+        kwargs['has_custom_layers'] = True
+        kwargs['has_validation_set'] = False
+        kwargs['is_mnist'] = True
+        kwargs['is_restricted'] = False
+        kwargs['is_standardized'] = False
+        kwargs['show'] = False
+
+        """
+        Integer, float, and string valued keyword arguments.
+        """
+        kwargs['number_of_clusters'] = 3
+        kwargs['restriction_labels'] = [1, 2, 3]
+        kwargs['intermediate_dimension'] = 512
+        kwargs['exponent_of_latent_space_dimension'] = 1
+        kwargs['augmentation_size'] = 100
+        kwargs['covariance_coefficient'] = 0.2
+        kwargs['number_of_epochs'] = 5
+        kwargs['batch_size'] = 128
+        kwargs['learning_rate_initial'] = 1e-5
+        kwargs['learning_rate_minimum'] = 1e-6
+        kwargs['encoder_activation'] = 'relu'  # 'relu' 'tanh' 'elu' 'softmax' 'sigmoid'
+        kwargs['decoder_activation'] = 'relu'
+        kwargs['final_activation'] = 'sigmoid'
+        kwargs['dropout_rate'] = 0.5
+        kwargs['l2_constant'] = 1e-4
+        kwargs['early_stopping_delta'] = 1
+        kwargs['beta'] = 1
+        kwargs['smoothing_alpha'] = 0.5
+        kwargs['number_of_rotations'] = 2
+        kwargs['angle_of_rotation'] = 30
+
+        return kwargs
 
     @classmethod
     def get_split_mnist_data(cls, val_size=0.5):
@@ -44,78 +100,43 @@ class DenseVAE:
 
     def __init__(self,
                  deep=True,
-                 is_mnist=True,
-                 number_of_clusters=3,
-                 is_restricted=False,
-                 is_standardized=False,
-                 restriction_labels=[1, 2, 3],
-                 intermediate_dimension=512,
+                 enable_activation=True,
+                 enable_augmentation=False,
+                 enable_batch_normalization=True,
+                 enable_dropout=True,
+                 enable_early_stopping=False,
+                 enable_logging=True,
+                 enable_label_smoothing=False,
+                 enable_rotations=False,
                  enable_stochastic_gradient_descent=False,
                  has_custom_layers=True,
                  has_validation_set=False,
+                 is_mnist=True,
+                 is_restricted=False,
+                 is_standardized=False,
+                 show=False,
+                 number_of_clusters=3,
+                 restriction_labels=[1, 2, 3],
+                 intermediate_dimension=512,
                  exponent_of_latent_space_dimension=1,
-                 enable_augmentation=False,
                  augmentation_size=100,
                  covariance_coefficient=0.2,
-                 show=False,
                  number_of_epochs=5,
                  batch_size=128,
                  learning_rate_initial=1e-5,
                  learning_rate_minimum=1e-6,
-                 enable_batch_normalization=True,
-                 enable_dropout=True,
-                 enable_activation=True,
-                 encoder_activation='relu',  # 'relu', 'tanh', 'elu', 'softmax', 'sigmoid'
-                 decoder_activation='relu',
-                 final_activation='sigmoid',
                  dropout_rate=0.5,
                  l2_constant=1e-4,
                  early_stopping_delta=1,
                  beta=1,
-                 enable_logging=True,
                  smoothing_alpha=0.5,
-                 enable_label_smoothing=False,
-                 enable_early_stopping=False,
-                 enable_rotations=False,
                  number_of_rotations=2,
-                 angle_of_rotation=30
-                 ):
-        """
-        For an MNIST variational autoencoder, we have the usual options that control network hyperparameters. In
-        addition, . . .
-        :param deep: A boolean indicating whether the autoencoder has more than one hidden layer.
-        :param is_mnist: A boolean indicating whether the data set is MNIST.
-        :param number_of_clusters: An integer indicating the number of clusters to be produced by clustering algorithms.
-        :param is_restricted: A boolean indicating whether at least one class label is to be ignored.
-        :param restriction_labels: A list of integers that indicate the class labels to be retained in the data set.
-        :param is_standardized: A boolean indicating whether the train_contrastive_mlp and test sets are standardized before being
-            input into the network.
-        :param enable_stochastic_gradient_descent: A boolean indicating whether SGD is performed during training.
-        :param has_custom_layers: A boolean indicating the layer structure of the network.
-        :param exponent_of_latent_space_dimension: An integer indicating the size of the latent space.
-        :param enable_augmentation: A boolean indicating whether data augmentation is to be performed.
-        :param augmentation_size: An integer indicating how much data are to be sampled for each existing data point.
-        :param covariance_coefficient: A float indicating the scalar multiple of the identity covariance matrix for the
-            Gaussians that are used to augment the data.
-        :param show: A boolean indicating whether matplotlib.pyplot.show is invoked after inference.
-            By default this is False.
-        :param number_of_epochs: An integer indicating the number of training epochs.
-        :param batch_size: An integer indicating the batch size.
-        :param learning_rate_initial: A float indicating the initial learning rate.
-        :param learning_rate_minimum: A float indicating the minimum learning rate (for a learning rate scheduler).
-        :param enable_batch_normalization: A boolean indicating whether batch normalization is performed.
-        :param enable_dropout: A boolean indicating whether dropout is performed during training.
-        :param enable_activation: A boolean indicating whether activation functions are used during training. In the
-            case of an autoencoder, removing network activations will give us an algorithm similar to PCA.
-        :param encoder_activation: A boolean indicating the activation function to be used in the encoder layers.
-        :param decoder_activation: A boolean indicating the activation function to be used in the decoder layers.
-        :param dropout_rate: A float indicating the proportion of neurons to be deactivated.
-        :param l2_constant: A float indicating the amount of L2 regularization.
-        :param early_stopping_delta: A float indicating the number of epochs before training is halted due to an
-            insufficient change in the validation loss.
-        :param beta: A float indicating the beta hyperparameter for a beta-variational autoencoder. Default is 0.
-        """
-        self.model_name = "vae_dense"
+                 angle_of_rotation=30,
+                 encoder_activation='relu',
+                 decoder_activation='relu',
+                 final_activation='sigmoid',
+                 model_name='vae'):
+        self.model_name = model_name
         self.enable_logging = enable_logging
         self.enable_label_smoothing = enable_label_smoothing
         self.deep = deep
@@ -145,7 +166,7 @@ class DenseVAE:
         self.has_validation_set = has_validation_set
         if self.is_mnist:
             if self.has_validation_set:
-                x_train, y_train, x_val, y_val, x_test, y_test = DenseVAE.get_split_mnist_data()
+                x_train, y_train, x_val, y_val, x_test, y_test = VAE.get_split_mnist_data()
 
                 if self.is_restricted:
                     x_train, y_train = operations.restrict_data_by_label(x_train, y_train, restriction_labels)
@@ -155,7 +176,7 @@ class DenseVAE:
                 if enable_rotations:
                     print("Rotations enabled!")
                     x_train = MNISTLoader('x_train').load(restriction_labels, number_of_rotations, angle_of_rotation)
-                    x_val = MNISTLoader('x_val').load(restriction_labels, number_of_rotations,  angle_of_rotation)
+                    x_val = MNISTLoader('x_val').load(restriction_labels, number_of_rotations, angle_of_rotation)
                     x_test = MNISTLoader('x_test').load(restriction_labels, number_of_rotations, angle_of_rotation)
 
                 self.x_train, self.y_train, self.x_val, self.y_val, self.x_test, self.y_test \
@@ -175,12 +196,14 @@ class DenseVAE:
 
                 if enable_rotations:
                     print("Rotations enabled!")
-                    x_train = MNISTLoader('scratch_train').load(restriction_labels, number_of_rotations, angle_of_rotation)
-                    x_test = MNISTLoader('scratch_test').load(restriction_labels, number_of_rotations, angle_of_rotation)
-                    y_train = MNISTLoader('scratch_train').load(restriction_labels, number_of_rotations,
-                                                                angle_of_rotation, label=True)
-                    y_test = MNISTLoader('scratch_test').load(restriction_labels, number_of_rotations,
-                                                              angle_of_rotation, label=True)
+                    x_train = MNISTLoader('train').load(restriction_labels, number_of_rotations,
+                                                        angle_of_rotation)
+                    x_test = MNISTLoader('test').load(restriction_labels, number_of_rotations,
+                                                      angle_of_rotation)
+                    y_train = MNISTLoader('train').load(restriction_labels, number_of_rotations,
+                                                        angle_of_rotation, label=True)
+                    y_test = MNISTLoader('test').load(restriction_labels, number_of_rotations,
+                                                      angle_of_rotation, label=True)
 
                 self.x_train, self.y_train, self.x_test, self.y_test = x_train, y_train, x_test, y_test
 
@@ -274,7 +297,8 @@ class DenseVAE:
         self.directory_counter = directories.DirectoryCounter(self.hyper_parameter_string)
         self.directory_number = self.directory_counter.count()
         self.hyper_parameter_string = '_'.join([self.hyper_parameter_string, 'x{:02d}'.format(self.directory_number)])
-        self.directory = directories.DirectoryCounter.make_output_directory(self.hyper_parameter_string, self.model_name)
+        self.directory = directories.DirectoryCounter.make_output_directory(self.hyper_parameter_string,
+                                                                            self.model_name)
         self.image_directory = os.path.join('images', self.directory)
 
         """
@@ -310,124 +334,6 @@ class DenseVAE:
 
         self.colors = ['#00B7BA', '#FFB86F', '#5E6572', '#6B0504', '#BA5C12']
 
-    def define_encoder(self):
-        z = self.encoder_mnist_input
-        z = Flatten()(z)
-        z = Dense(self.intermediate_dimension, activation=self.encoder_activation)(z)
-
-        z_gaussian = Dense(self.gaussian_dimension, name="gaussian")(z)
-        z = vae_layers.Reparametrization(name="latent_samples")(z_gaussian)
-        encoder_output = [z_gaussian, z]
-
-        encoder = Model([self.encoder_gaussian, self.encoder_mnist_input], encoder_output, name='encoder')
-        encoder.summary()
-        plot_model(encoder, to_file=os.path.join(self.image_directory, 'encoder.png'), show_shapes=True)
-
-        return encoder, [z_gaussian, z]
-
-    def define_decoder(self, encoder_output):
-        decoder_gaussian_input = Input(shape=encoder_output[0].shape[1:], name='gaussian_input')
-        decoder_latent_input = Input(shape=encoder_output[1].shape[1:], name='latent_input')
-        x = decoder_latent_input
-        gaussian = decoder_gaussian_input
-
-        # Needed to prevent Keras from complaining that nothing was done to this tensor:
-        identity_lambda = Lambda(lambda w: w, name="dec_identity_lambda")
-        gaussian = identity_lambda(gaussian)
-
-        x = Dense(self.intermediate_dimension, activation=self.decoder_activation)(x)
-
-        x = Dense(self.data_dimension, activation=self.final_activation)(x)
-
-        x = Reshape((28, 28))(x)
-
-        decoder_output = [gaussian, x]
-        decoder = Model([decoder_gaussian_input, decoder_latent_input], decoder_output, name='decoder')
-        decoder.summary()
-        plot_model(decoder, to_file=os.path.join(self.image_directory, 'decoder.png'), show_shapes=True)
-
-        return decoder
-
-    def define_autoencoder(self):
-        """
-        Define the encoder and decoder models,
-        :return:
-        """
-        encoder, z = self.define_encoder()
-        decoder = self.define_decoder(z)
-
-        auto_encoder_input = [self.auto_encoder_gaussian, self.auto_encoder_mnist_input]
-        latent_space_input = encoder(auto_encoder_input)
-        auto_encoder_output = decoder(latent_space_input)
-        auto_encoder = Model(auto_encoder_input, auto_encoder_output, name='variational_auto_encoder')
-        encoding_loss = EncodingLoss()
-        reconstruction_loss = tensorflow.keras.losses.MeanSquaredError()
-        auto_encoder.summary()
-        plot_model(auto_encoder, to_file=os.path.join(self.image_directory, 'auto_encoder.png'), show_shapes=True)
-        auto_encoder.compile(optimizers.Adam(lr=self.learning_rate),
-                             loss=[encoding_loss, reconstruction_loss],
-                             loss_weights=[self.beta, 764])
-        return auto_encoder, encoder, decoder
-
-    def get_fit_args(self):
-        """
-        Define a list of NumPy inputs and NumPy outputs of the Keras model. These are the actual data that flow through
-        the Keras model.
-        :return: A list of arguments for the fit method of the Keras model.
-        """
-        return [[self.gaussian_train, self.x_train], [self.gaussian_train, self.x_train]]
-
-    def get_fit_kwargs(self):
-        """
-        Construct keyword arguments for fitting the Keras model. This is useful for conditioning the model's training
-        on the presence of a validation set.
-        :return: A dictionary of keyword arguments for the fit method of the Keras model.
-        """
-        fit_kwargs = dict()
-        fit_kwargs['epochs'] = self.number_of_epochs
-        fit_kwargs['batch_size'] = self.batch_size
-        if self.has_validation_set and self.enable_early_stopping:
-            fit_kwargs['callbacks'] = [self.early_stopping_callback, self.nan_termination_callback]
-        else:
-            fit_kwargs['callbacks'] = [self.nan_termination_callback]
-        if self.has_validation_set:
-            fit_kwargs['validation_data'] = ([self.gaussian_val, self.x_val], [self.gaussian_val, self.x_val])
-        return fit_kwargs
-
-    def fit_autoencoder(self):
-        """
-        Fit the autoencoder to the data.
-        :return: A 4-tuple consisting of the autoencoder, encoder, and decoder Keras models, along with the history of
-            the autoencoder, which stores training and validation metrics.
-        """
-        args = self.get_fit_args()
-        kwargs = self.get_fit_kwargs()
-        auto_encoder, encoder, decoder = self.define_autoencoder()
-        history = auto_encoder.fit(*args, **kwargs)
-        print("Variational autoencoder trained.\n")
-        return auto_encoder, encoder, decoder, history
-
-    def predict(self, model, data=None):
-        """
-        Run a prediction on the given data set.
-        :param model: A Keras model. In this case, either the autoencoder, the encoder, or the decoder.
-        :param data: The data on which to predict. Default is None. If None, then data is set to the training data.
-        :return: The model's prediction of the data.
-        """
-        if data is None:
-            data = self.x_train
-        return model.predict(data)
-
-    def generate(self, decoder, number_of_samples=1):
-        """
-        Generate samples using the decoder of the learned autoencoder's generative model.
-        :param decoder: A Keras model. Here's it's a decoder learned by training a VAE.
-        :param number_of_samples: An integer denoting the number of samples to generate. Default is 1.
-        :return: A NumPy array of data produced by the generative model.
-        """
-        # data = samples in the latent space.
-        # return self.predict(decoder, data)
-
     def assign_soft_labels(self, x_train_latent, x_test_latent):
         """
         Fit a Gaussian mixture model to a latent representation of training data, then use the components in the
@@ -441,10 +347,9 @@ class DenseVAE:
         mixture_model.fit(x_train_latent)
         # Get the parameters for each Gaussian density in the mixture model, then fire up SciPy to compute the density
         # values for each data point in the latent representation.
-        soft_labels = None # Here, the soft labels are gotten from the densities of each Gaussian
+        soft_labels = None  # Here, the soft labels are gotten from the densities of each Gaussian
         print(soft_labels)
         return soft_labels
-
 
     def save_model_weights(self, autoencoder, encoder, decoder):
         """
@@ -525,36 +430,3 @@ class DenseVAE:
         plt.savefig(filename)
         if self.show:
             plt.show()
-
-    def train(self):
-        """
-        Begin logging, train the autoencoder, use the autoencoder's history to plot loss curves, and save the parameters of the autoencoder, encoder, and decoder (respectively) to .h5 files.
-        :return: None
-        """
-        if self.enable_logging:
-            logs.begin_logging(self.directory)
-
-        auto_encoder, encoder, decoder, history = self.fit_autoencoder()
-
-        plots.plot_loss_curves(history, self.image_directory)
-
-        self.save_model_weights(auto_encoder, encoder, decoder)
-
-        self.plot_results((encoder, decoder))
-
-
-vae = DenseVAE(number_of_epochs=25,
-               is_restricted=True,
-               restriction_labels=[2, 7],
-               enable_logging=True,
-               enable_rotations=True,
-               number_of_rotations=11,
-               angle_of_rotation=30,
-               enable_stochastic_gradient_descent=True,
-               encoder_activation='relu',
-               decoder_activation='relu',
-               final_activation='sigmoid',
-               learning_rate_initial=1e-2,
-               beta=1)
-vae.train()
-del vae

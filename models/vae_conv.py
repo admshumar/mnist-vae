@@ -17,6 +17,7 @@ from tensorflow.keras.utils import plot_model
 from models.layers.vae_layers import Reparametrization
 from models.losses.losses import EncodingLoss
 from utils import logs, operations, plots, directories, labels
+from utils.loaders import MNISTLoader
 
 from sklearn.model_selection import train_test_split
 
@@ -45,6 +46,7 @@ class ConvolutionalVAE:
                  number_of_clusters=3,
                  is_restricted=False,
                  is_standardized=False,
+                 restriction_labels=[1, 2, 3],
                  intermediate_dimension=512,
                  enable_stochastic_gradient_descent=False,
                  has_custom_layers=True,
@@ -58,20 +60,23 @@ class ConvolutionalVAE:
                  batch_size=128,
                  learning_rate_initial=1e-5,
                  learning_rate_minimum=1e-6,
-                 restriction_labels=None,
-                 enable_label_smoothing=False,
-                 smoothing_alpha=0.5,
                  enable_batch_normalization=True,
                  enable_dropout=True,
                  enable_activation=True,
                  encoder_activation='relu',  # 'relu', 'tanh', 'elu', 'softmax', 'sigmoid'
                  decoder_activation='relu',
                  final_activation='sigmoid',
-                 dropout_rate=0.2,
+                 dropout_rate=0.5,
                  l2_constant=1e-4,
                  early_stopping_delta=1,
                  beta=1,
-                 enable_logging=True
+                 enable_logging=True,
+                 smoothing_alpha=0.5,
+                 enable_label_smoothing=False,
+                 enable_early_stopping=False,
+                 enable_rotations=False,
+                 number_of_rotations=2,
+                 angle_of_rotation=30
                  ):
         """
         For an MNIST variational autoencoder, we have the usual options that control network hyperparameters. In
@@ -115,6 +120,11 @@ class ConvolutionalVAE:
         self.is_mnist = is_mnist
         self.is_restricted = is_restricted
         self.restriction_labels = restriction_labels
+        self.enable_early_stopping = enable_early_stopping and has_validation_set
+        self.enable_rotations = enable_rotations
+        self.number_of_rotations = number_of_rotations
+        self.angle_of_rotation = angle_of_rotation
+
         if self.is_restricted:
             self.number_of_clusters = len(self.restriction_labels)
         else:
@@ -128,6 +138,7 @@ class ConvolutionalVAE:
         self.augmentation_size = augmentation_size
         self.covariance_coefficient = covariance_coefficient
         self.show = show
+        self.restriction_labels = restriction_labels
 
         self.has_validation_set = has_validation_set
         if self.is_mnist:
@@ -139,6 +150,12 @@ class ConvolutionalVAE:
                     x_val, y_val = operations.restrict_data_by_label(x_val, y_val, restriction_labels)
                     x_test, y_test = operations.restrict_data_by_label(x_test, y_test, restriction_labels)
 
+                if enable_rotations:
+                    print("Rotations enabled!")
+                    x_train = MNISTLoader('x_train').load(restriction_labels, number_of_rotations, angle_of_rotation)
+                    x_val = MNISTLoader('x_val').load(restriction_labels, number_of_rotations, angle_of_rotation)
+                    x_test = MNISTLoader('x_test').load(restriction_labels, number_of_rotations, angle_of_rotation)
+
                 self.x_train, self.y_train, self.x_val, self.y_val, self.x_test, self.y_test \
                     = x_train, y_train, x_val, y_val, x_test, y_test
 
@@ -146,12 +163,24 @@ class ConvolutionalVAE:
                     self.y_train_smooth = labels.Smoother(y_train, alpha=smoothing_alpha).smooth()
                     self.y_val_smooth = labels.Smoother(y_val, alpha=smoothing_alpha).smooth()
                     self.y_test_smooth = labels.Smoother(y_test, alpha=smoothing_alpha).smooth()
+
             else:
                 (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
                 if self.is_restricted:
                     x_train, y_train = operations.restrict_data_by_label(x_train, y_train, restriction_labels)
                     x_test, y_test = operations.restrict_data_by_label(x_test, y_test, restriction_labels)
+
+                if enable_rotations:
+                    print("Rotations enabled!")
+                    x_train = MNISTLoader('scratch_train').load(restriction_labels, number_of_rotations,
+                                                                angle_of_rotation)
+                    x_test = MNISTLoader('scratch_test').load(restriction_labels, number_of_rotations,
+                                                              angle_of_rotation)
+                    y_train = MNISTLoader('scratch_train').load(restriction_labels, number_of_rotations,
+                                                                angle_of_rotation, label=True)
+                    y_test = MNISTLoader('scratch_test').load(restriction_labels, number_of_rotations,
+                                                              angle_of_rotation, label=True)
 
                 self.x_train, self.y_train, self.x_test, self.y_test = x_train, y_train, x_test, y_test
 
@@ -164,8 +193,9 @@ class ConvolutionalVAE:
             self.intermediate_dimension = intermediate_dimension
 
             self.x_train = operations.normalize(self.x_train)
-            self.x_val = operations.normalize(self.x_val)
             self.x_test = operations.normalize(self.x_test)
+            if self.has_validation_set:
+                self.x_val = operations.normalize(self.x_val)
 
             self.gaussian_train = operations.get_gaussian_parameters(self.x_train)
             self.gaussian_val = operations.get_gaussian_parameters(self.x_test)
@@ -536,20 +566,18 @@ class ConvolutionalVAE:
         self.plot_results((encoder, decoder))
 
 
-vae = ConvolutionalVAE(number_of_epochs=12,
+vae = ConvolutionalVAE(number_of_epochs=25,
                        is_restricted=True,
-                       restriction_labels=[6, 9],
-                       enable_dropout=True,
-                       enable_label_smoothing=False,
-                       smoothing_alpha=.5,
+                       restriction_labels=[2, 7],
                        enable_logging=True,
-                       enable_batch_normalization=True,
+                       enable_rotations=True,
+                       number_of_rotations=11,
+                       angle_of_rotation=30,
                        enable_stochastic_gradient_descent=True,
                        encoder_activation='relu',
                        decoder_activation='relu',
                        final_activation='sigmoid',
                        learning_rate_initial=1e-2,
-                       has_validation_set=True,
                        beta=2)
-vae.train_contrastive_mlp()
+vae.train_autoencoder()
 del vae
