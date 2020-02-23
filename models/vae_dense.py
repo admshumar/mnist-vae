@@ -233,7 +233,7 @@ class DenseVAE(VAE):
 
 vae = DenseVAE(number_of_epochs=50,
                is_restricted=True,
-               restriction_labels=[6, 8],
+               restriction_labels=[0, 1, 8],
                enable_logging=True,
                enable_rotations=True,
                number_of_rotations=11,

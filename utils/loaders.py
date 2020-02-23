@@ -23,11 +23,9 @@ class MNISTLoader:
     def load(self, list_of_digits, number_of_rotations, angle_of_rotation, label=False):
         t0 = time()
         print("Loading data.")
-        initial_digit = list_of_digits[0]
-        data = self.get_file(initial_digit, number_of_rotations, angle_of_rotation, label=label)
-        for digit in list_of_digits:
-            new_data = self.get_file(digit, number_of_rotations, angle_of_rotation, label=label)
-            data = np.concatenate((data, new_data))
+        data_tuple = tuple(self.get_file(digit, number_of_rotations, angle_of_rotation, label=label)
+                           for digit in list_of_digits)
+        data = np.concatenate(data_tuple)
         t1 = time()
         t = t1 - t0
         print(f"Data loaded in {t} seconds.")

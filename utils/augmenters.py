@@ -98,7 +98,11 @@ class MNISTRotator(Rotator):
         self.save(self.list_of_digits)
 
 
+"""
+EXAMPLE:
 classes = list(range(10))
 for c in classes:
     rotator = MNISTRotator([c], number_of_rotations=11, angle_of_rotation=30, partition='test')
     rotator.augment()
+"""
+
