@@ -397,11 +397,11 @@ class VAE:
         z_gaussian, z_mnist = encoder.predict([test_gaussian, self.x_test], batch_size=self.batch_size)
         z_mean, z_covariance = operations.split_gaussian_parameters(z_gaussian)
         plt.figure(figsize=(12, 10))
-        plt.scatter(z_mean[:, 0], z_mean[:, 1], c=self.y_test)
+        plt.scatter(z_mean[:, 0], z_mean[:, 1], c=self.y_test, s=1.5, alpha=0.3)
         plt.colorbar()
         plt.xlabel("z[0]")
         plt.ylabel("z[1]")
-        plt.savefig(filename)
+        plt.savefig(filename, dpi=300)
         if self.show:
             plt.show()
 

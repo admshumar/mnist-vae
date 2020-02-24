@@ -257,7 +257,7 @@ class ConvolutionalVAE(VAE):
         # return self.predict(decoder, data)
 
 
-vae = ConvolutionalVAE(number_of_epochs=25,
+vae = ConvolutionalVAE(number_of_epochs=50,
                        is_restricted=True,
                        restriction_labels=[2],
                        enable_logging=True,
