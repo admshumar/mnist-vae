@@ -12,7 +12,8 @@ from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ReduceLROnPla
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.layers import *
 
-from utils import classifiers, operations, directories, labels
+from utils import directories, logs, plots
+from utils import classifiers, operations, labels
 from utils.loaders import MNISTLoader
 
 from sklearn.mixture import GaussianMixture
@@ -25,13 +26,6 @@ class VAE:
     """
     Base class for variational autoencoders, from which all autoencoder models inherit.
     """
-
-    @classmethod
-    def load_weights(cls, model, hyperparameter_string):
-        directory = None  # Specify your directory here
-        # Get absolute directory path here
-        filepath = None  # Get weight file path here
-        model.load_weights(filepath)
 
     @classmethod
     def get_mixture_model(cls, data, labels):
@@ -319,9 +313,11 @@ class VAE:
         self.directory_counter = directories.DirectoryCounter(self.hyper_parameter_string)
         self.directory_number = self.directory_counter.count()
         self.hyper_parameter_string = '_'.join([self.hyper_parameter_string, 'x{:02d}'.format(self.directory_number)])
-        self.directory = directories.DirectoryCounter.make_output_directory(self.hyper_parameter_string,
-                                                                            self.model_name)
-        self.image_directory = os.path.join('images', self.directory)
+
+        directory, image_directory = directories.DirectoryCounter.make_output_directory(self.hyper_parameter_string,
+                                                                                        self.model_name)
+        self.directory = directory
+        self.image_directory = image_directory
 
         """
         Tensorflow Input instances for declaring model inputs.
@@ -360,6 +356,84 @@ class VAE:
         for t in self.__dict__.items():
             print(t)
 
+    def get_fit_args(self):
+        """
+        Define a list of NumPy inputs and NumPy outputs of the Keras model. These are the actual data that flow through
+        the Keras model.
+        :return: A list of arguments for the fit method of the Keras model.
+        """
+        return [[self.gaussian_train, self.x_train], [self.gaussian_train, self.x_train]]
+
+    def get_fit_kwargs(self):
+        """
+        Construct keyword arguments for fitting the Keras model. This is useful for conditioning the model's training
+        on the presence of a validation set.
+        :return: A dictionary of keyword arguments for the fit method of the Keras model.
+        """
+        fit_kwargs = dict()
+        fit_kwargs['epochs'] = self.number_of_epochs
+        fit_kwargs['batch_size'] = self.batch_size
+        if self.has_validation_set and self.enable_early_stopping:
+            fit_kwargs['callbacks'] = [self.early_stopping_callback, self.nan_termination_callback]
+        else:
+            fit_kwargs['callbacks'] = [self.nan_termination_callback]
+        if self.has_validation_set:
+            fit_kwargs['validation_data'] = ([self.gaussian_val, self.x_val], [self.gaussian_val, self.x_val])
+        return fit_kwargs
+
+    def fit_autoencoder(self):
+        """
+        Fit the autoencoder to the data.
+        :return: A 4-tuple consisting of the autoencoder, encoder, and decoder Keras models, along with the history of
+            the autoencoder, which stores training and validation metrics.
+        """
+        args = self.get_fit_args()
+        kwargs = self.get_fit_kwargs()
+        auto_encoder, encoder, decoder = self.define_autoencoder()
+        history = auto_encoder.fit(*args, **kwargs)
+        print("Variational autoencoder trained.\n")
+        return auto_encoder, encoder, decoder, history
+
+    def train(self):
+        """
+        Begin logging, train the autoencoder, use the autoencoder's history to plot loss curves, and save the parameters
+        of the autoencoder, encoder, and decoder (respectively) to .h5 files.
+        :return: None
+        """
+        if self.enable_logging:
+            logs.begin_logging(self.directory)
+
+        auto_encoder, encoder, decoder, history = self.fit_autoencoder()
+
+        self.print_settings()
+
+        plots.plot_loss_curves(history, self.image_directory)
+
+        self.save_model_weights(auto_encoder, encoder, decoder)
+
+        self.plot_results((encoder, decoder))
+
+    def predict(self, model, data=None):
+        """
+        Run a prediction on the given data set.
+        :param model: A Keras model. In this case, either the autoencoder, the encoder, or the decoder.
+        :param data: The data on which to predict. Default is None. If None, then data is set to the training data.
+        :return: The model's prediction of the data.
+        """
+        if data is None:
+            data = self.x_train
+        return model.predict(data)
+
+    def generate(self, decoder, number_of_samples=1):
+        """
+        Generate samples using the decoder of the learned autoencoder's generative model.
+        :param decoder: A Keras model. Here's it's a decoder learned by training a VAE.
+        :param number_of_samples: An integer denoting the number of samples to generate. Default is 1.
+        :return: A NumPy array of data produced by the generative model.
+        """
+        # data = samples in the latent space.
+        # return self.predict(decoder, data)
+
     def assign_soft_labels(self, x_train_latent, x_test_latent):
         """
         Fit a Gaussian mixture model to a latent representation of training data, then use the components in the
@@ -385,7 +459,7 @@ class VAE:
         :param decoder: A Keras model, in this case a decoder.
         :return: None
         """
-        model_directory = os.path.join(self.image_directory, 'models')
+        model_directory = os.path.join(self.directory, 'models')
         auto_encoder_filepath = os.path.join(model_directory, 'autoencoder.h5')
         encoder_filepath = os.path.join(model_directory, 'encoder.h5')
         decoder_filepath = os.path.join(model_directory, 'decoder.h5')
