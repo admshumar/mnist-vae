@@ -12,11 +12,10 @@ from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ReduceLROnPla
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.layers import *
 
-from utils import operations, directories, labels
+from utils import classifiers, operations, directories, labels
 from utils.loaders import MNISTLoader
 
 from sklearn.mixture import GaussianMixture
-from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
 import matplotlib.pyplot as plt
@@ -26,6 +25,21 @@ class VAE:
     """
     Base class for variational autoencoders, from which all autoencoder models inherit.
     """
+
+    @classmethod
+    def load_weights(cls, model, hyperparameter_string):
+        directory = None  # Specify your directory here
+        # Get absolute directory path here
+        filepath = None  # Get weight file path here
+        model.load_weights(filepath)
+
+    @classmethod
+    def get_mixture_model(cls, data, labels):
+        return classifiers.fit_mixture_model_on_latent_space(data, labels)
+
+    @classmethod
+    def get_logistic_regression(cls, data, labels):
+        return classifiers.logistically_regress_on_latent_space(data, labels)
 
     @classmethod
     def get_kwargs(cls):
