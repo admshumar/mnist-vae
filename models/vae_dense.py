@@ -98,7 +98,10 @@ class DenseVAE(VAE):
     def define_encoder(self):
         z = self.encoder_mnist_input
         z = Flatten()(z)
-        z = Dense(self.intermediate_dimension, activation=self.encoder_activation)(z)
+        z = Dense(self.intermediate_dimension)(z)
+
+        if self.enable_activation:
+            z = self.decoder_activation_layer(z)
 
         z_gaussian = Dense(self.gaussian_dimension, name="gaussian")(z)
         z = Reparametrization(name="latent_samples")(z_gaussian)
@@ -120,9 +123,15 @@ class DenseVAE(VAE):
         identity_lambda = Lambda(lambda w: w, name="dec_identity_lambda")
         gaussian = identity_lambda(gaussian)
 
-        x = Dense(self.intermediate_dimension, activation=self.decoder_activation)(x)
+        x = Dense(self.intermediate_dimension)(x)
+
+        if self.enable_activation:
+            x = self.decoder_activation_layer(x)
 
         x = Dense(self.data_dimension, activation=self.final_activation)(x)
+
+        if self.enable_activation:
+            x = self.decoder_activation_layer(x)
 
         x = Reshape((28, 28))(x)
 
@@ -203,6 +212,8 @@ class DenseVAE(VAE):
 
         auto_encoder, encoder, decoder, history = self.fit_autoencoder()
 
+        self.print_settings()
+
         plots.plot_loss_curves(history, self.image_directory)
 
         self.save_model_weights(auto_encoder, encoder, decoder)
@@ -229,23 +240,3 @@ class DenseVAE(VAE):
         """
         # data = samples in the latent space.
         # return self.predict(decoder, data)
-
-
-label_list = [[i, j] for i in range(10) for j in range(10) if i < j]
-for k in range(len(label_list)):
-    vae = DenseVAE(number_of_epochs=100,
-                   is_restricted=True,
-                   restriction_labels=label_list[k],
-                   enable_logging=True,
-                   enable_dropout=True,
-                   enable_rotations=True,
-                   number_of_rotations=11,
-                   angle_of_rotation=30,
-                   enable_stochastic_gradient_descent=True,
-                   encoder_activation='relu',
-                   decoder_activation='relu',
-                   final_activation='sigmoid',
-                   learning_rate_initial=1e-2,
-                   beta=2)
-    vae.train()
-    del vae

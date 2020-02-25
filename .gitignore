@@ -1,6 +1,6 @@
 __pycache__
 *.pyc
-scratch/scratch.py
+scratch/scratch_tf.py
 .idea
 tensorboard.sh
 .DS_Store

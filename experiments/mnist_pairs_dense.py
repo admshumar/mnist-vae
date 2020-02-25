@@ -1,9 +1,18 @@
 from models.vae_dense import DenseVAE
 
 """
+Hypothesis: A dense variational autoencoder can learn latent representations of rotated MNIST digits in which distinct
+classes are separable by submanifolds (i.e. decision boundaries that can be learned by support vector machines, 
+logistic regression models, etc.).
 
+Findings: We get great separation between digits that are topologically distinct (e.g. zeros and eights), and some
+separation between digits with identical topologies (e.g. ones and sevens, sixes and nines, etc.).
 """
-label_list = [[i, j] for i in range(10) for j in range(10) if i < j]
+label_list1 = [[i, j] for i in range(10) for j in range(10) if i < j]
+label_list2 = [[i] for i in range(10)]
+label_list3 = [list(range(10))]
+
+label_list = label_list2 + label_list1 + label_list3
 for k in range(len(label_list)):
     vae = DenseVAE(number_of_epochs=100,
                    is_restricted=True,

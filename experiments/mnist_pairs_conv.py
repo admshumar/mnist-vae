@@ -1,7 +1,11 @@
 from models.vae_conv import ConvolutionalVAE
 
 """
+Hypothesis: A convolutional variational autoencoder can learn latent representations of rotated MNIST digits in which 
+distinct classes are separable by submanifolds (i.e. decision boundaries that can be learned by support vector machines, 
+logistic regression models, etc.).
 
+Findings: 
 """
 label_list = [[i, j] for i in range(10) for j in range(10) if i < j]
 for k in range(len(label_list)):

@@ -4,22 +4,19 @@ from __future__ import print_function
 
 import os
 import numpy as np
-import tensorflow
 
+import tensorflow
 import tensorflow.keras.backend as k
-from tensorflow.keras import optimizers
+
 from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ReduceLROnPlateau, TerminateOnNaN
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.layers import *
-from tensorflow.keras.models import Model
-from tensorflow.keras.utils import plot_model
 
-from models.layers import vae_layers
-from models.losses.losses import EncodingLoss
-from utils import logs, operations, plots, directories, labels
+from utils import operations, directories, labels
 from utils.loaders import MNISTLoader
 
 from sklearn.mixture import GaussianMixture
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
 import matplotlib.pyplot as plt
@@ -104,7 +101,6 @@ class VAE:
         permutation = np.random.permutation(len(data))
         return data[permutation], labels[permutation]
 
-
     def __init__(self,
                  deep=True,
                  enable_activation=True,
@@ -141,6 +137,8 @@ class VAE:
                  angle_of_rotation=30,
                  encoder_activation='relu',
                  decoder_activation='relu',
+                 encoder_activation_layer=LeakyReLU(),
+                 decoder_activation_layer=LeakyReLU(),
                  final_activation='sigmoid',
                  model_name='vae'):
 
@@ -254,6 +252,8 @@ class VAE:
         self.enable_activation = enable_activation
         self.encoder_activation = encoder_activation  # 'relu', 'tanh', 'elu', 'softmax', 'sigmoid'
         self.decoder_activation = decoder_activation
+        self.encoder_activation_layer = encoder_activation_layer
+        self.decoder_activation_layer = decoder_activation_layer
         self.final_activation = final_activation
         self.dropout_rate = dropout_rate
         self.l2_constant = l2_constant
@@ -341,6 +341,10 @@ class VAE:
         self.nan_termination_callback = TerminateOnNaN()
 
         self.colors = ['#00B7BA', '#FFB86F', '#5E6572', '#6B0504', '#BA5C12']
+
+    def print_settings(self):
+        for t in self.__dict__.items():
+            print(t)
 
     def assign_soft_labels(self, x_train_latent, x_test_latent):
         """
