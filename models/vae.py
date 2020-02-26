@@ -15,7 +15,7 @@ from tensorflow.keras.layers import *
 from utils import directories, logs, plots
 from utils import classifiers, operations, labels
 from utils.loaders import MNISTLoader
-from utils.labels import OneHotEncoder
+from utils.labels import *
 
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import train_test_split
@@ -439,8 +439,7 @@ class VAE:
     def assign_soft_labels(self, x_train_latent, x_test_latent):
         """
         Fit a Gaussian mixture model to a latent representation of training data, then use the components in the
-        mixture model to return a collection of class probabilities.
-        class probabilities for a latent representation of test data.
+        mixture model to return a collection of class probabilities for a latent representation of test data.
         :param x_train_latent: A NumPy data array.
         :param x_test_latent: A NumPy data array.
         :return: A NumPy data array of soft class probabilities.
@@ -449,9 +448,10 @@ class VAE:
         mixture_model.fit(x_train_latent)
         # Get the parameters for each Gaussian density in the mixture model, then fire up SciPy to compute the density
         # values for each data point in the latent representation.
-        soft_labels = None  # Here, the soft labels are gotten from the densities of each Gaussian
-        print(soft_labels)
-        return soft_labels
+        means = mixture_model.means_
+        covariances = mixture_model.covariances_
+        soft_labels = GaussianSoftLabels(x_test_latent, means, covariances, labels=self.y_test_binary)
+        return soft_labels.smooth_gaussian_mixture(alpha=self.alpha)
 
     def save_model_weights(self, model, model_name):
         """

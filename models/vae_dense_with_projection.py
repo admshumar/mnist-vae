@@ -226,8 +226,7 @@ class DenseVAEClassifier(VAE):
 
         encoder_classifier.compile(optimizers.Adam(lr=self.learning_rate),
                                    loss=CategoricalCrossentropy(name='categorical_cross_entropy',
-                                                                label_smoothing=alpha)
-                                   )
+                                                                label_smoothing=alpha))
         return encoder_classifier
 
     def get_fit_args_encoder_classifier(self, use_soft_labels=False):
