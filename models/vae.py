@@ -15,6 +15,7 @@ from tensorflow.keras.layers import *
 from utils import directories, logs, plots
 from utils import classifiers, operations, labels
 from utils.loaders import MNISTLoader
+from utils.labels import OneHotEncoder
 
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import train_test_split
@@ -26,14 +27,6 @@ class VAE:
     """
     Base class for variational autoencoders, from which all autoencoder models inherit.
     """
-
-    @classmethod
-    def get_mixture_model(cls, data, labels):
-        return classifiers.fit_mixture_model_on_latent_space(data, labels)
-
-    @classmethod
-    def get_logistic_regression(cls, data, labels):
-        return classifiers.logistically_regress_on_latent_space(data, labels)
 
     @classmethod
     def get_kwargs(cls):
@@ -105,6 +98,12 @@ class VAE:
 
     @classmethod
     def shuffle(cls, data, labels):
+        """
+        Use NumPy's array indexing to shuffle two 
+        :param data:
+        :param labels:
+        :return:
+        """
         assert len(data) == len(labels)
         permutation = np.random.permutation(len(data))
         return data[permutation], labels[permutation]
@@ -117,6 +116,7 @@ class VAE:
                  enable_dropout=True,
                  enable_early_stopping=False,
                  enable_logging=True,
+                 enable_manual_clusters=False,
                  enable_label_smoothing=False,
                  enable_rotations=False,
                  enable_stochastic_gradient_descent=False,
@@ -126,6 +126,9 @@ class VAE:
                  is_restricted=False,
                  is_standardized=False,
                  show=False,
+                 with_mixture_model=False,
+                 with_logistic_regression=False,
+                 with_svc=False,
                  number_of_clusters=3,
                  restriction_labels=[1, 2, 3],
                  intermediate_dimension=512,
@@ -161,11 +164,10 @@ class VAE:
         self.enable_rotations = enable_rotations
         self.number_of_rotations = number_of_rotations
         self.angle_of_rotation = angle_of_rotation
-
-        if self.is_restricted:
-            self.number_of_clusters = len(self.restriction_labels)
-        else:
-            self.number_of_clusters = number_of_clusters
+        self.with_mixture_model = with_mixture_model
+        self.with_logistic_regression = with_logistic_regression
+        self.with_svc = with_svc
+        self.alpha = smoothing_alpha
 
         self.is_standardized = is_standardized
         self.enable_stochastic_gradient_descent = enable_stochastic_gradient_descent
@@ -196,10 +198,14 @@ class VAE:
                 self.x_train, self.y_train, self.x_val, self.y_val, self.x_test, self.y_test \
                     = x_train, y_train, x_val, y_val, x_test, y_test
 
+                self.y_train_binary = OneHotEncoder(y_train).encode()
+                self.y_val_binary = OneHotEncoder(y_val).encode()
+                self.y_test_binary = OneHotEncoder(y_test).encode()
+
                 if self.enable_label_smoothing:
-                    self.y_train_smooth = labels.Smoother(y_train, alpha=smoothing_alpha).smooth()
-                    self.y_val_smooth = labels.Smoother(y_val, alpha=smoothing_alpha).smooth()
-                    self.y_test_smooth = labels.Smoother(y_test, alpha=smoothing_alpha).smooth()
+                    self.y_train_smooth = labels.Smoother(y_train, alpha=smoothing_alpha).smooth_uniform()
+                    self.y_val_smooth = labels.Smoother(y_val, alpha=smoothing_alpha).smooth_uniform()
+                    self.y_test_smooth = labels.Smoother(y_test, alpha=smoothing_alpha).smooth_uniform()
 
             else:
                 (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -224,9 +230,21 @@ class VAE:
 
                 self.x_train, self.y_train, self.x_test, self.y_test = x_train, y_train, x_test, y_test
 
+                self.y_train_binary = OneHotEncoder(y_train).encode()
+                self.y_test_binary = OneHotEncoder(y_test).encode()
+
                 if self.enable_label_smoothing:
-                    self.y_train_smooth = labels.Smoother(y_train, alpha=smoothing_alpha).smooth()
-                    self.y_test_smooth = labels.Smoother(y_test, alpha=smoothing_alpha).smooth()
+                    self.y_train_smooth = labels.Smoother(y_train, alpha=smoothing_alpha).smooth_uniform()
+                    self.y_test_smooth = labels.Smoother(y_test, alpha=smoothing_alpha).smooth_uniform()
+
+            if self.is_restricted:
+                self.number_of_clusters = len(self.restriction_labels)
+            else:
+                self.number_of_clusters = len(np.unique(y_train))
+
+            self.enable_manual_clusters = enable_manual_clusters
+            if self.enable_manual_clusters:
+                self.number_of_clusters = number_of_clusters
 
             self.data_width, self.data_height = self.x_train.shape[1], self.x_train.shape[2]
             self.data_dimension = self.data_width * self.data_height
@@ -238,7 +256,7 @@ class VAE:
                 self.x_val = operations.normalize(self.x_val)
 
             self.gaussian_train = operations.get_gaussian_parameters(self.x_train)
-            self.gaussian_val = operations.get_gaussian_parameters(self.x_test)
+            self.gaussian_test = operations.get_gaussian_parameters(self.x_test)
 
         self.x_train_length = len(self.x_train)
         self.x_test_length = len(self.x_test)
@@ -308,6 +326,9 @@ class VAE:
         if beta > 1:
             self.hyper_parameter_list.append(f"beta_{beta}")
 
+        if smoothing_alpha > 1:
+            self.hyper_parameter_list.append(f"alpha_{smoothing_alpha}")
+
         self.hyper_parameter_string = '_'.join([str(i) for i in self.hyper_parameter_list])
 
         self.directory_counter = directories.DirectoryCounter(self.hyper_parameter_string)
@@ -316,7 +337,7 @@ class VAE:
 
         directory, image_directory = directories.DirectoryCounter.make_output_directory(self.hyper_parameter_string,
                                                                                         self.model_name)
-        self.directory = directory
+        self.experiment_directory = directory
         self.image_directory = image_directory
 
         """
@@ -332,7 +353,7 @@ class VAE:
         """
         Callbacks to TensorBoard for observing the model structure and network training curves.
         """
-        self.tensorboard_callback = TensorBoard(log_dir=os.path.join(self.directory, 'tensorboard_logs'),
+        self.tensorboard_callback = TensorBoard(log_dir=os.path.join(self.experiment_directory, 'tensorboard_logs'),
                                                 histogram_freq=2,
                                                 write_graph=True,
                                                 write_images=True)
@@ -356,6 +377,27 @@ class VAE:
         for t in self.__dict__.items():
             print(t)
 
+    def define_encoder(self):
+        """
+        Abstract method for encoder instantiation.
+        :return: encoder, encoder_output
+        """
+        return None, None
+
+    def define_decoder(self, encoder_output):
+        """
+        Abstract method for decoder instantiation.
+        :return: decoder
+        """
+        return None
+
+    def define_autoencoder(self):
+        """
+        Abstract method for autoencoder instantiation.
+        :return: autoencoder, encoder, decoder
+        """
+        return None, None, None
+
     def get_fit_args(self):
         """
         Define a list of NumPy inputs and NumPy outputs of the Keras model. These are the actual data that flow through
@@ -378,7 +420,7 @@ class VAE:
         else:
             fit_kwargs['callbacks'] = [self.nan_termination_callback]
         if self.has_validation_set:
-            fit_kwargs['validation_data'] = ([self.gaussian_val, self.x_val], [self.gaussian_val, self.x_val])
+            fit_kwargs['validation_data'] = ([self.gaussian_test, self.x_val], [self.gaussian_test, self.x_val])
         return fit_kwargs
 
     def fit_autoencoder(self):
@@ -393,46 +435,6 @@ class VAE:
         history = auto_encoder.fit(*args, **kwargs)
         print("Variational autoencoder trained.\n")
         return auto_encoder, encoder, decoder, history
-
-    def train(self):
-        """
-        Begin logging, train the autoencoder, use the autoencoder's history to plot loss curves, and save the parameters
-        of the autoencoder, encoder, and decoder (respectively) to .h5 files.
-        :return: None
-        """
-        if self.enable_logging:
-            logs.begin_logging(self.directory)
-
-        auto_encoder, encoder, decoder, history = self.fit_autoencoder()
-
-        self.print_settings()
-
-        plots.plot_loss_curves(history, self.image_directory)
-
-        self.save_model_weights(auto_encoder, encoder, decoder)
-
-        self.plot_results((encoder, decoder))
-
-    def predict(self, model, data=None):
-        """
-        Run a prediction on the given data set.
-        :param model: A Keras model. In this case, either the autoencoder, the encoder, or the decoder.
-        :param data: The data on which to predict. Default is None. If None, then data is set to the training data.
-        :return: The model's prediction of the data.
-        """
-        if data is None:
-            data = self.x_train
-        return model.predict(data)
-
-    def generate(self, decoder, number_of_samples=1):
-        """
-        Generate samples using the decoder of the learned autoencoder's generative model.
-        :param decoder: A Keras model. Here's it's a decoder learned by training a VAE.
-        :param number_of_samples: An integer denoting the number of samples to generate. Default is 1.
-        :return: A NumPy array of data produced by the generative model.
-        """
-        # data = samples in the latent space.
-        # return self.predict(decoder, data)
 
     def assign_soft_labels(self, x_train_latent, x_test_latent):
         """
@@ -451,27 +453,20 @@ class VAE:
         print(soft_labels)
         return soft_labels
 
-    def save_model_weights(self, autoencoder, encoder, decoder):
+    def save_model_weights(self, model, model_name):
         """
-        Save the weights of the autoencoder, encoder, and decoder (respectively) to .h5 files.
-        :param autoencoder: A Keras model, in this case an autoencoder.
-        :param encoder: A Keras model, in this case an encoder.
-        :param decoder: A Keras model, in this case a decoder.
+        Save the weights of a model to an .h5 file.
+        :param model: A Keras model instance.
+        :param model_name: A string indicating the model's filename.
         :return: None
         """
-        model_directory = os.path.join(self.directory, 'models')
-        auto_encoder_filepath = os.path.join(model_directory, 'autoencoder.h5')
-        encoder_filepath = os.path.join(model_directory, 'encoder.h5')
-        decoder_filepath = os.path.join(model_directory, 'decoder.h5')
-
+        model_directory = os.path.join(self.experiment_directory, 'models')
+        model_filepath = os.path.join(model_directory, model_name+'.h5')
         if not os.path.exists(model_directory):
             os.makedirs(model_directory)
+        model.save_weights(model_filepath)
 
-        autoencoder.save_weights(auto_encoder_filepath)
-        encoder.save_weights(encoder_filepath)
-        decoder.save_weights(decoder_filepath)
-
-    def plot_results(self, models):
+    def plot_results(self, models, test_mode=False):
         """Plots labels and MNIST digits as a function of the 2D latent vector
 
         # Arguments
@@ -483,21 +478,28 @@ class VAE:
         encoder, decoder = models
         test_gaussian = operations.get_gaussian_parameters(self.x_test)
         os.makedirs(self.image_directory, exist_ok=True)
-        filename = os.path.join(self.image_directory, "vae_mean.png")
-
+        if test_mode:
+            filename = "vae_mean_test.png"
+        else:
+            filename = "vae_mean.png"
+        filepath = os.path.join(self.image_directory, filename)
         # display a 2D plot of the digit classes in the latent space
         z_gaussian, z_mnist = encoder.predict([test_gaussian, self.x_test], batch_size=self.batch_size)
         z_mean, z_covariance = operations.split_gaussian_parameters(z_gaussian)
         plt.figure(figsize=(12, 10))
-        plt.scatter(z_mean[:, 0], z_mean[:, 1], c=self.y_test, s=1.5, alpha=0.3)
+        plt.scatter(z_mean[:, 0], z_mean[:, 1], c=self.y_test, s=4, alpha=0.3)
         plt.colorbar()
         plt.xlabel("z[0]")
         plt.ylabel("z[1]")
-        plt.savefig(filename, dpi=300)
+        plt.savefig(filepath, dpi=200)
         if self.show:
             plt.show()
 
-        filename = os.path.join(self.image_directory, "digits_over_latent.png")
+        if test_mode:
+            filename = "digits_over_latent_test.png"
+        else:
+            filename = "digits_over_latent.png"
+        filepath = os.path.join(self.image_directory, filename)
         # display a 30x30 2D manifold of digits
         n = 30
         digit_size = 28
@@ -527,6 +529,106 @@ class VAE:
         plt.xlabel("z[0]")
         plt.ylabel("z[1]")
         plt.imshow(figure, cmap='Greys_r')
-        plt.savefig(filename)
+        plt.savefig(filepath)
         if self.show:
             plt.show()
+
+    def train(self):
+        """
+        Begin logging, train the autoencoder, use the autoencoder's history to plot loss curves, and save the parameters
+        of the autoencoder, encoder, and decoder (respectively) to .h5 files.
+        :return: None
+        """
+        if self.enable_logging:
+            logs.begin_logging(self.experiment_directory)
+        auto_encoder, encoder, decoder, history = self.fit_autoencoder()
+        self.print_settings()
+        plots.plot_loss_curves(history, self.image_directory)
+        self.save_model_weights(auto_encoder, 'auto_encoder')
+        self.save_model_weights(encoder, 'encoder')
+        self.save_model_weights(decoder, 'decoder')
+        self.plot_results((encoder, decoder))
+        self.report_latent_space_classifiers(encoder)
+        return auto_encoder, encoder, decoder
+
+    def load_model_weights(self, weight_directory, architecture='autoencoder'):
+        """
+        Load the weights of the model specified by the class constructor.
+        :return: None
+        """
+        architecture_set = {'autoencoder', 'encoder', 'decoder'}
+        assert architecture in architecture_set
+
+        if architecture == 'encoder':
+            model, _ = self.define_encoder()
+        elif architecture == 'decoder':
+            _, encoder_output = self.define_encoder()
+            model = self.define_decoder(encoder_output)
+        else:
+            model, _, _ = self.define_autoencoder()
+
+        filepath = os.path.abspath(os.path.join(self.experiment_directory, '..', weight_directory, 'models', architecture + '.h5'))
+        model.load_weights(filepath)
+        return model
+
+    def predict(self, model, data=None, latent_only=False):
+        """
+        Run a prediction on the given data set.
+        :param model: A Keras model. In this case, either the autoencoder, the encoder, or the decoder.
+        :param data: The data on which to predict. Default is None. If None, then data is set to the training data.
+        :return: The model's prediction of the data.
+        """
+        if data is None:
+            data = self.x_train
+        if latent_only:
+            return model.predict(data)[1]
+        else:
+            return model.predict(data)
+
+    def generate(self, decoder, number_of_samples=1):
+        """
+        Generate samples using the decoder of the learned autoencoder's generative model.
+        :param decoder: A Keras model. Here's it's a decoder learned by training a VAE.
+        :param number_of_samples: An integer denoting the number of samples to generate. Default is 1.
+        :return: A NumPy array of data produced by the generative model.
+        """
+        # data = samples in the latent space.
+        # return self.predict(decoder, data)
+
+    def get_mixture_model(self, model, data, labels):
+        latent_representation = self.predict(model, data=data, latent_only=True)
+        return classifiers.fit_mixture_model_on_latent_space(latent_representation, labels), latent_representation
+
+    def get_logistic_regression(self, model, data, labels):
+        latent_representation = self.predict(model, data=data, latent_only=True)
+        return classifiers.logistically_regress_on_latent_space(latent_representation, labels), latent_representation
+
+    def get_support_vector_classification(self, model, data, labels):
+        latent_representation = self.predict(model, data=data, latent_only=True)
+        return classifiers.sv_classify_on_latent_space(latent_representation, labels, kernel='rbf'), \
+               latent_representation
+
+    def report_latent_space_classifiers(self, encoder):
+        if self.with_logistic_regression:
+            logistic_regression, latent_representation = self.get_logistic_regression(encoder,
+                                                                                      [self.gaussian_test, self.x_test],
+                                                                                      self.y_test)
+            print("Logistic regression model score:",
+                  logistic_regression.score(latent_representation, self.y_test))
+
+        if self.with_mixture_model:
+            mixture_model, latent_representation = self.get_mixture_model(encoder,
+                                                                          [self.gaussian_test, self.x_test],
+                                                                          self.y_test)
+            print("Gaussian mixture model per-sample average log-likelihood:",
+                  mixture_model.score(latent_representation, self.y_test))
+            print("Gaussian mixture model per-sample average log-likelihood:",
+                  mixture_model.score_samples(latent_representation))
+
+        if self.with_svc:
+            svc, latent_representation = self.get_support_vector_classification(encoder,
+                                                                                [self.gaussian_test,
+                                                                                 self.x_test],
+                                                                                self.y_test)
+            print("Support vector classifier mean accuracy:",
+                  svc.score(latent_representation, self.y_test))

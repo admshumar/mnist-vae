@@ -203,7 +203,7 @@ class ConvolutionalVAE(VAE):
         else:
             fit_kwargs['callbacks'] = [self.nan_termination_callback]
         if self.has_validation_set:
-            fit_kwargs['validation_data'] = ([self.gaussian_val, self.x_val], [self.gaussian_val, self.x_val])
+            fit_kwargs['validation_data'] = ([self.gaussian_test, self.x_val], [self.gaussian_test, self.x_val])
         return fit_kwargs
 
     def fit_autoencoder(self):
@@ -225,7 +225,7 @@ class ConvolutionalVAE(VAE):
         :return: None
         """
         if self.enable_logging:
-            logs.begin_logging(self.directory)
+            logs.begin_logging(self.experiment_directory)
 
         auto_encoder, encoder, decoder, history = self.fit_autoencoder()
 

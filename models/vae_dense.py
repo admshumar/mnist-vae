@@ -25,6 +25,7 @@ class DenseVAE(VAE):
                  enable_dropout=True,
                  enable_early_stopping=False,
                  enable_logging=True,
+                 enable_manual_clusters=False,
                  enable_label_smoothing=False,
                  enable_rotations=False,
                  enable_stochastic_gradient_descent=False,
@@ -34,6 +35,9 @@ class DenseVAE(VAE):
                  is_restricted=False,
                  is_standardized=False,
                  show=False,
+                 with_mixture_model=False,
+                 with_logistic_regression=False,
+                 with_svc=False,
                  number_of_clusters=3,
                  restriction_labels=[1, 2, 3],
                  intermediate_dimension=512,
@@ -53,6 +57,8 @@ class DenseVAE(VAE):
                  angle_of_rotation=30,
                  encoder_activation='relu',
                  decoder_activation='relu',
+                 encoder_activation_layer=ReLU(),
+                 decoder_activation_layer=ReLU(),
                  final_activation='sigmoid',
                  ):
         model_name = 'vae_dense'
@@ -63,6 +69,7 @@ class DenseVAE(VAE):
                                        enable_dropout=enable_dropout,
                                        enable_early_stopping=enable_early_stopping,
                                        enable_logging=enable_logging,
+                                       enable_manual_clusters=enable_manual_clusters,
                                        enable_label_smoothing=enable_label_smoothing,
                                        enable_rotations=enable_rotations,
                                        enable_stochastic_gradient_descent=enable_stochastic_gradient_descent,
@@ -72,6 +79,9 @@ class DenseVAE(VAE):
                                        is_restricted=is_restricted,
                                        is_standardized=is_standardized,
                                        show=show,
+                                       with_mixture_model=with_mixture_model,
+                                       with_logistic_regression=with_logistic_regression,
+                                       with_svc=with_svc,
                                        number_of_clusters=number_of_clusters,
                                        restriction_labels=restriction_labels,
                                        intermediate_dimension=intermediate_dimension,
@@ -91,6 +101,8 @@ class DenseVAE(VAE):
                                        angle_of_rotation=angle_of_rotation,
                                        encoder_activation=encoder_activation,
                                        decoder_activation=decoder_activation,
+                                       encoder_activation_layer=encoder_activation_layer,
+                                       decoder_activation_layer=decoder_activation_layer,
                                        final_activation=final_activation,
                                        model_name=model_name)
 
@@ -161,3 +173,5 @@ class DenseVAE(VAE):
                              loss=[encoding_loss, reconstruction_loss],
                              loss_weights=[self.beta, 764])
         return auto_encoder, encoder, decoder
+
+

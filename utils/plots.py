@@ -4,16 +4,20 @@ import os
 from utils import operations
 
 
-def plot_loss_curves(model_history, directory):
+def plot_loss_curves(model_history, directory, name=None):
     """
     Plot loss curves for a Keras model using MatPlotLib. (NOTE: This plots only *after* training completes. It would
     be nice to plot concurrently with model training just in case something goes wrong, otherwise you'll get no
     loss curves.)
     :param model_history: A dictionary of evidence_lower_bound values.
     :param directory: A string indicating the directory to which the evidence_lower_bound image is written.
+    :param name: A string indicating a filename for the plot.
     :return: None
     """
-    filepath = os.path.join(directory, 'losses.png')
+    if name is None:
+        filepath = os.path.join(directory, 'losses.png')
+    else:
+        filepath = os.path.join(directory, 'losses_'+name+'.png')
     model_losses = {'loss', 'val_loss'}.intersection(set(model_history.history.keys()))
 
     fig = plt.figure(dpi=200)
