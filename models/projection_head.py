@@ -7,8 +7,9 @@ import tensorflow
 
 import tensorflow.keras.backend as k
 from tensorflow.keras import optimizers
+from tensorflow.keras.metrics import Accuracy
 from tensorflow.keras.layers import *
-from tensorflow.keras.losses import CategoricalCrossentropy
+from tensorflow.keras.losses import *
 from tensorflow.keras.models import Model
 from tensorflow.keras.utils import plot_model, to_categorical
 
@@ -118,13 +119,13 @@ class DenseVAEClassifier(VAE):
 
         z_gaussian = Dense(self.gaussian_dimension, name="gaussian")(z)
         z = Reparametrization(name="latent_samples")(z_gaussian)
-        encoder_output = [z_gaussian, z]
+        encoder_output_layer = [z_gaussian, z]
 
-        encoder = Model([self.encoder_gaussian, self.encoder_mnist_input], encoder_output, name='encoder')
+        encoder = Model([self.encoder_gaussian, self.encoder_mnist_input], encoder_output_layer, name='encoder')
         encoder.summary()
         plot_model(encoder, to_file=os.path.join(self.image_directory, 'encoder.png'), show_shapes=True)
 
-        return encoder, [z_gaussian, z]
+        return encoder, encoder_output_layer
 
     def define_decoder(self, encoder_output):
         decoder_gaussian_input = Input(shape=encoder_output[0].shape[1:], name='gaussian_input')
@@ -142,9 +143,6 @@ class DenseVAEClassifier(VAE):
             x = self.decoder_activation_layer(x)
 
         x = Dense(self.data_dimension, activation=self.final_activation)(x)
-
-        if self.enable_activation:
-            x = self.decoder_activation_layer(x)
 
         x = Reshape((28, 28))(x)
 
@@ -176,13 +174,13 @@ class DenseVAEClassifier(VAE):
                              loss_weights=[self.beta, 764])
         return auto_encoder, encoder, decoder
 
-    def define_projection_head(self, encoder_output):
-        projection_head_input = Input(shape=encoder_output[1].shape[1:], name='projection_head_input')
-        z = Dense(projection_head_input.shape[1], activation='sigmoid')(projection_head_input)
+    def define_projection_head(self, encoder_output_layer):
+        latent_input_layer = Input(shape=encoder_output_layer[1].shape[1:], name='projection_head_latent_input')
+        z = Dense(latent_input_layer.shape[1], activation='sigmoid')(latent_input_layer)
         z = Dense(self.number_of_clusters, activation='softmax')(z)
-        projection_head_output = z
+        output_layer = z
 
-        projection_head = Model(projection_head_input, projection_head_output, name='projection_head')
+        projection_head = Model(latent_input_layer, output_layer, name='projection_head')
         projection_head.summary()
         plot_model(projection_head, to_file=os.path.join(self.image_directory, 'projection_head.png'), show_shapes=True)
         return projection_head
@@ -208,34 +206,43 @@ class DenseVAEClassifier(VAE):
         """
         # Network layers
         if weight_directory is None:
-            _, encoder_output = self.define_encoder()
+            _, encoder_output_layer = self.define_encoder()
             _, encoder, _ = self.train()
         else:
-            encoder, encoder_output = self.get_pretrained_encoder(weight_directory)
-        projection_head = self.define_projection_head(encoder_output)
+            encoder, encoder_output_layer = self.get_pretrained_encoder(weight_directory)
+        projection_head = self.define_projection_head(encoder_output_layer)
 
         # Network tensors
-        encoder_classifier_input = [self.encoder_gaussian, self.encoder_mnist_input]
-        latent_samples = encoder(encoder_classifier_input)[1]
-        class_probabilities = projection_head(latent_samples)
+        ec_gaussian_input_layer = Input(shape=self.gaussian_shape, name='ec_gaussian_input')
+        ec_mnist_input_layer = Input(shape=self.mnist_shape, name='ec_mnist_input')
+        encoder_classifier_input_layer = [ec_gaussian_input_layer, ec_mnist_input_layer]
+        projection_head_input_layer = encoder(encoder_classifier_input_layer)[1]
+        class_probabilities = projection_head(projection_head_input_layer)
+        ec_output_layer = class_probabilities # [ec_gaussian_input_layer, class_probabilities]
 
         # Model definition
-        encoder_classifier = Model(encoder_classifier_input, class_probabilities, name='encoder_classifier')
+        encoder_classifier = Model(encoder_classifier_input_layer, ec_output_layer, name='encoder_classifier')
         encoder_classifier.summary()
         plot_model(encoder, to_file=os.path.join(self.image_directory, 'encoder_classifier.png'), show_shapes=True)
 
         encoder_classifier.compile(optimizers.Adam(lr=self.learning_rate),
                                    loss=CategoricalCrossentropy(name='categorical_cross_entropy',
-                                                                label_smoothing=alpha))
+                                                                label_smoothing=alpha),
+                                   metrics=[Accuracy()])
         return encoder_classifier
 
-    def get_fit_args_encoder_classifier(self, use_soft_labels=False):
+    def get_fit_args_encoder_classifier(self, use_gaussian_soft_labels=False):
         """
         Define a list of NumPy inputs and NumPy outputs of the Keras model. These are the actual data that flow through
         the Keras model.
         :return: A list of arguments for the fit method of the Keras model.
         """
-        return [[self.gaussian_train, self.x_train], self.y_train_binary]
+        model_input = [self.gaussian_train, self.x_train]
+        if use_gaussian_soft_labels:
+            model_target = [self.assign_soft_labels()]
+        else:
+            model_target = [self.y_train_binary]
+        return [model_input, model_target]
 
     def fit_encoder_classifier(self, weight_directory=None, alpha=0):
         args = self.get_fit_args_encoder_classifier()
