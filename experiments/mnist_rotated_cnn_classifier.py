@@ -24,5 +24,5 @@ classifier = MNISTCNNClassifier(number_of_epochs=100,
                                 smoothing_alpha=0,
                                 show=False)
 
-classifier.train_classifier()
+print(classifier.y_train_binary.shape)
 del classifier

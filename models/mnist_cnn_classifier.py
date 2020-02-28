@@ -164,14 +164,14 @@ class MNISTCNNClassifier(VAE):
 
         return classifier
 
-    def get_fit_args(self, use_gaussian_soft_labels=False, x_train_latent=None, x_test_latent=None):
+    def get_fit_args(self, x_train_latent=None, x_test_latent=None):
         """
         Define a list of NumPy inputs and NumPy outputs of the Keras model. These are the actual data that flow through
         the Keras model.
         :return: A list of arguments for the fit method of the Keras model.
         """
         model_input = self.x_train
-        if use_gaussian_soft_labels:
+        if x_train_latent and x_test_latent:
             model_target = self.assign_soft_labels(x_train_latent, x_test_latent)
         else:
             model_target = self.y_train_binary

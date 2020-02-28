@@ -1,5 +1,5 @@
 from tensorflow.keras.datasets import mnist
-from time import time
+from time import time, gmtime
 from scipy import ndimage
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,7 +12,7 @@ class Rotator():
         plt.imshow(image)
         plt.show()
 
-    def __init__(self, images, labels, number_of_rotations, angle_of_rotation, partition='train'):
+    def __init__(self, images, labels, number_of_rotations=2, angle_of_rotation=30, partition='train'):
         """
         A rotator comes equipped with a data set, a directory to which augmented data sets are written, and augmentation
         parameters that determine the size and character of the augmented data set.
@@ -57,9 +57,9 @@ class Rotator():
         print(f"Completed in {t} seconds.")
         return augmented_data, augmented_labels
 
-    def save(self, digit):
-        images_filename = f'digits={str(digit)}_n_rot={self.number_of_rotations}_angle={self.angle_of_rotation}.npy'
-        labels_filename = f'labels={str(digit)}_n_rot={self.number_of_rotations}_angle={self.angle_of_rotation}.npy'
+    def save(self, list_of_digits):
+        images_filename = f'digits={str(list_of_digits)}_n_rot={self.number_of_rotations}_angle={self.angle_of_rotation}.npy'
+        labels_filename = f'labels={str(list_of_digits)}_n_rot={self.number_of_rotations}_angle={self.angle_of_rotation}.npy'
         images_filepath = os.path.abspath(os.path.join(self.directory, images_filename))
         labels_filepath = os.path.abspath(os.path.join(self.directory, labels_filename))
         augmented_data, augmented_labels = self.append_rotated_images()
@@ -80,26 +80,28 @@ class Rotator():
 
 
 class MNISTRotator(Rotator):
-    def __init__(self, digit, number_of_rotations, angle_of_rotation, partition='train'):
+    def __init__(self, list_of_digits, number_of_rotations, angle_of_rotation, partition='train'):
         if partition == 'test':
             print("Using MNIST test data.")
             (_, _), (x, y) = mnist.load_data()
         else:
             print("Using MNIST training data.")
             (x, y), (_, _) = mnist.load_data()
-        class_indices = np.where(y == digit)
+        class_indices = np.where(np.isin(y, list_of_digits))
         data = x[class_indices]
         labels = y[class_indices]
-        self.digit = digit
-        super(MNISTRotator, self).__init__(data, labels, number_of_rotations, angle_of_rotation, partition=partition)
+        self.list_of_digits = list_of_digits
+        super(MNISTRotator, self).__init__(data, labels,
+                                           number_of_rotations=number_of_rotations,
+                                           angle_of_rotation=angle_of_rotation,
+                                           partition=partition)
 
     def augment(self):
-        self.save(self.digit)
+        self.save(self.list_of_digits)
 
 
 classes = list(range(10))
 for c in classes:
-    rotator = MNISTRotator([c], 11, 30, partition='test')
-    rotator.augment()
-
-
+    for dir in ['train', 'test']:
+        rotator = MNISTRotator([c], 11, 30, partition=dir)
+        rotator.augment()

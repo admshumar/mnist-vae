@@ -225,7 +225,6 @@ class VAE:
                                                                       number_of_rotations,
                                                                       angle_of_rotation)
 
-
                 self.x_train, self.y_train, self.x_val, self.y_val, self.x_test, self.y_test \
                     = x_train, y_train, x_val, y_val, x_test, y_test
 
