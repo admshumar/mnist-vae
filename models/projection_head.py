@@ -11,14 +11,13 @@ from tensorflow.keras.metrics import Accuracy
 from tensorflow.keras.layers import *
 from tensorflow.keras.losses import *
 from tensorflow.keras.models import Model
-from tensorflow.keras.utils import plot_model, to_categorical
+from tensorflow.keras.utils import plot_model
 
 from models.losses.losses import EncodingLoss
 from models.vae import VAE
 from models.layers.vae_layers import Reparametrization
 
 from utils import plots
-from utils.labels import OneHotEncoder
 
 
 class DenseVAEClassifier(VAE):
@@ -265,11 +264,3 @@ class DenseVAEClassifier(VAE):
         print("Categorical Cross Entropy Loss:", result)
         return result
 
-    def train_and_evaluate_encoder_classifier(self):
-        encoder_classifier = self.train_encoder_classifier(alpha=self.alpha)
-        self.evaluate_encoder_classifier(encoder_classifier)
-
-    def evaluate_trained_encoder_classifier(self, weight_directory):
-        encoder_classifier = self.define_encoder_classifier(weight_directory)
-        result = self.evaluate_encoder_classifier(encoder_classifier)
-        return result

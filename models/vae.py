@@ -8,6 +8,8 @@ import numpy as np
 import tensorflow
 import tensorflow.keras.backend as k
 
+from time import time
+
 from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ReduceLROnPlateau, TerminateOnNaN
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.layers import *
@@ -97,6 +99,23 @@ class VAE:
         return x_train, y_train, x_val, y_val, x_test, y_test
 
     @classmethod
+    def get_split_rotated_mnist_data(cls, restriction_labels, number_of_rotations, angle_of_rotation, val_size=0.5):
+        """
+        Grab the TensorFlow Keras incarnation of the MNIST data set, then split the training set into a training subset
+        and a validation subset.
+        :return: NumPy arrays of MNIST training, validation, and test sets.
+        """
+        x_train = MNISTLoader('train').load(restriction_labels, number_of_rotations, angle_of_rotation)
+        x_test = MNISTLoader('test').load(restriction_labels, number_of_rotations, angle_of_rotation)
+        y_train = MNISTLoader('train').load(restriction_labels, number_of_rotations, angle_of_rotation, label=True)
+        y_test = MNISTLoader('test').load(restriction_labels, number_of_rotations, angle_of_rotation, label=True)
+        x_val, x_test, y_val, y_test = train_test_split(x_test, y_test,
+                                                        test_size=val_size,
+                                                        random_state=37,
+                                                        stratify=y_test)
+        return x_train, y_train, x_val, y_val, x_test, y_test
+
+    @classmethod
     def shuffle(cls, data, labels):
         """
         Use NumPy's array indexing to shuffle two 
@@ -115,6 +134,9 @@ class VAE:
                  enable_batch_normalization=True,
                  enable_dropout=True,
                  enable_early_stopping=False,
+                 early_stopping_patience=10,
+                 enable_lr_reduction=False,
+                 lr_reduction_patience=10,
                  enable_logging=True,
                  enable_manual_clusters=False,
                  enable_label_smoothing=False,
@@ -122,6 +144,7 @@ class VAE:
                  enable_stochastic_gradient_descent=False,
                  has_custom_layers=True,
                  has_validation_set=False,
+                 validation_size=0.5,
                  is_mnist=True,
                  is_restricted=False,
                  is_standardized=False,
@@ -132,6 +155,7 @@ class VAE:
                  number_of_clusters=3,
                  restriction_labels=[1, 2, 3],
                  intermediate_dimension=512,
+                 latent_dimension=2,
                  exponent_of_latent_space_dimension=1,
                  augmentation_size=100,
                  covariance_coefficient=0.2,
@@ -141,7 +165,7 @@ class VAE:
                  learning_rate_minimum=1e-6,
                  dropout_rate=0.5,
                  l2_constant=1e-4,
-                 early_stopping_delta=1,
+                 early_stopping_delta=0.01,
                  beta=1,
                  smoothing_alpha=0.5,
                  number_of_rotations=2,
@@ -168,6 +192,7 @@ class VAE:
         self.with_logistic_regression = with_logistic_regression
         self.with_svc = with_svc
         self.alpha = smoothing_alpha
+        self.validation_size = validation_size
 
         self.is_standardized = is_standardized
         self.enable_stochastic_gradient_descent = enable_stochastic_gradient_descent
@@ -178,6 +203,9 @@ class VAE:
         self.covariance_coefficient = covariance_coefficient
         self.show = show
         self.restriction_labels = restriction_labels
+        self.early_stopping_patience = early_stopping_patience
+        self.enable_lr_reduction = enable_lr_reduction
+        self.lr_reduction_patience = lr_reduction_patience
 
         self.has_validation_set = has_validation_set
         if self.is_mnist:
@@ -191,9 +219,11 @@ class VAE:
 
                 if enable_rotations:
                     print("Rotations enabled!")
-                    x_train = MNISTLoader('x_train').load(restriction_labels, number_of_rotations, angle_of_rotation)
-                    x_val = MNISTLoader('x_val').load(restriction_labels, number_of_rotations, angle_of_rotation)
-                    x_test = MNISTLoader('x_test').load(restriction_labels, number_of_rotations, angle_of_rotation)
+                    x_train, y_train, \
+                    x_val, y_val, \
+                    x_test, y_test = VAE.get_split_rotated_mnist_data(restriction_labels,
+                                                                      number_of_rotations,
+                                                                      angle_of_rotation)
 
                 self.x_train, self.y_train, self.x_val, self.y_val, self.x_test, self.y_test \
                     = x_train, y_train, x_val, y_val, x_test, y_test
@@ -283,11 +313,10 @@ class VAE:
         self.final_activation = final_activation
         self.dropout_rate = dropout_rate
         self.l2_constant = l2_constant
-        self.patience_limit = self.number_of_epochs // 5
         self.early_stopping_delta = early_stopping_delta
 
-        self.latent_dim = 2
-        self.gaussian_dimension = 2 * self.latent_dim
+        self.latent_dimension = latent_dimension
+        self.gaussian_dimension = 2 * self.latent_dimension
 
         self.beta = max(beta, 1)
 
@@ -300,9 +329,9 @@ class VAE:
                                      self.enable_dropout,
                                      self.dropout_rate,
                                      self.l2_constant,
-                                     self.patience_limit,
+                                     self.early_stopping_patience,
                                      self.early_stopping_delta,
-                                     self.latent_dim]
+                                     self.latent_dimension]
 
         if self.is_mnist:
             self.hyper_parameter_list.append("mnist")
@@ -344,7 +373,7 @@ class VAE:
         Tensorflow Input instances for declaring model inputs.
         """
         self.mnist_shape = self.x_train.shape[1:]
-        self.gaussian_shape = 2 * self.latent_dim
+        self.gaussian_shape = 2 * self.latent_dimension
         self.encoder_gaussian = Input(shape=self.gaussian_shape, name='enc_gaussian')
         self.encoder_mnist_input = Input(shape=self.mnist_shape, name='enc_mnist')
         self.auto_encoder_gaussian = Input(shape=self.gaussian_shape, name='ae_gaussian')
@@ -360,13 +389,13 @@ class VAE:
 
         self.early_stopping_callback = EarlyStopping(monitor='val_loss',
                                                      min_delta=self.early_stopping_delta,
-                                                     patience=self.patience_limit,
+                                                     patience=self.early_stopping_patience,
                                                      mode='auto',
                                                      restore_best_weights=True)
 
         self.learning_rate_callback = ReduceLROnPlateau(monitor='val_loss',
                                                         factor=0.1,
-                                                        patience=50,
+                                                        patience=self.lr_reduction_patience,
                                                         min_lr=self.learning_rate_minimum)
 
         self.nan_termination_callback = TerminateOnNaN()
@@ -433,7 +462,6 @@ class VAE:
         kwargs = self.get_fit_kwargs()
         auto_encoder, encoder, decoder = self.define_autoencoder()
         history = auto_encoder.fit(*args, **kwargs)
-        print("Variational autoencoder trained.\n")
         return auto_encoder, encoder, decoder, history
 
     def assign_soft_labels(self, x_train_latent, x_test_latent):
@@ -461,7 +489,7 @@ class VAE:
         :return: None
         """
         model_directory = os.path.join(self.experiment_directory, 'models')
-        model_filepath = os.path.join(model_directory, model_name+'.h5')
+        model_filepath = os.path.join(model_directory, model_name + '.h5')
         if not os.path.exists(model_directory):
             os.makedirs(model_directory)
         model.save_weights(model_filepath)
@@ -532,6 +560,7 @@ class VAE:
         plt.savefig(filepath)
         if self.show:
             plt.show()
+        plt.close('all')
 
     def train(self):
         """
@@ -539,9 +568,13 @@ class VAE:
         of the autoencoder, encoder, and decoder (respectively) to .h5 files.
         :return: None
         """
+        t0 = time()
         if self.enable_logging:
             logs.begin_logging(self.experiment_directory)
         auto_encoder, encoder, decoder, history = self.fit_autoencoder()
+        t1 = time()
+        t = t1 - t0
+        print(f"Variational autoencoder trained in {t} seconds.\n")
         self.print_settings()
         plots.plot_loss_curves(history, self.image_directory)
         self.save_model_weights(auto_encoder, 'auto_encoder')
@@ -549,6 +582,7 @@ class VAE:
         self.save_model_weights(decoder, 'decoder')
         self.plot_results((encoder, decoder))
         self.report_latent_space_classifiers(encoder)
+
         return auto_encoder, encoder, decoder
 
     def load_model_weights(self, weight_directory, architecture='autoencoder'):
@@ -567,7 +601,8 @@ class VAE:
         else:
             model, _, _ = self.define_autoencoder()
 
-        filepath = os.path.abspath(os.path.join(self.experiment_directory, '..', weight_directory, 'models', architecture + '.h5'))
+        filepath = os.path.abspath(
+            os.path.join(self.experiment_directory, '..', weight_directory, 'models', architecture + '.h5'))
         model.load_weights(filepath)
         return model
 
@@ -608,27 +643,43 @@ class VAE:
         return classifiers.sv_classify_on_latent_space(latent_representation, labels, kernel='rbf'), \
                latent_representation
 
+    def report_score(self, model, data, labels, text, file):
+        score = model.score(data, labels)
+        score_string = text + f" {score}\n"
+        print(text, score)
+        file.write(score_string)
+
     def report_latent_space_classifiers(self, encoder):
+        filepath = os.path.abspath(os.path.join(self.experiment_directory, 'classifiers.txt'))
+        classifier_report = open(filepath, "w+")
         if self.with_logistic_regression:
             logistic_regression, latent_representation = self.get_logistic_regression(encoder,
                                                                                       [self.gaussian_test, self.x_test],
                                                                                       self.y_test)
-            print("Logistic regression model score:",
-                  logistic_regression.score(latent_representation, self.y_test))
+            self.report_score(logistic_regression,
+                              latent_representation,
+                              self.y_test,
+                              "Logistic regression model score:",
+                              classifier_report)
 
         if self.with_mixture_model:
             mixture_model, latent_representation = self.get_mixture_model(encoder,
                                                                           [self.gaussian_test, self.x_test],
                                                                           self.y_test)
-            print("Gaussian mixture model per-sample average log-likelihood:",
-                  mixture_model.score(latent_representation, self.y_test))
-            print("Gaussian mixture model per-sample average log-likelihood:",
-                  mixture_model.score_samples(latent_representation))
+            self.report_score(mixture_model,
+                              latent_representation,
+                              self.y_test,
+                              "Gaussian mixture model per-sample average log-likelihood:",
+                              classifier_report)
 
         if self.with_svc:
             svc, latent_representation = self.get_support_vector_classification(encoder,
                                                                                 [self.gaussian_test,
                                                                                  self.x_test],
                                                                                 self.y_test)
-            print("Support vector classifier mean accuracy:",
-                  svc.score(latent_representation, self.y_test))
+            self.report_score(svc,
+                              latent_representation,
+                              self.y_test,
+                              "Support vector classifier mean accuracy:",
+                              classifier_report)
+        classifier_report.close()
