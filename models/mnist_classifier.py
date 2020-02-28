@@ -133,7 +133,7 @@ class MNISTClassifier(VAE):
         if self.enable_dropout:
             z = Dropout(rate=self.dropout_rate, seed=17)(z)
 
-        logits_layer = Dense(len(self.restriction_labels))(z)
+        logits_layer = Dense(self.number_of_clusters)(z)
 
         probability_layer = Softmax()(logits_layer)
 
@@ -190,7 +190,8 @@ class MNISTClassifier(VAE):
             logs.begin_logging(self.experiment_directory)
         classifier, history = self.fit_classifier(alpha=alpha)
         self.print_settings()
-        plots.loss(history, self.image_directory, name=self.model_name)
+        plots.loss(history, self.image_directory)
+        plots.accuracy(history, self.image_directory)
         self.save_model_weights(classifier, 'classifier')
         if evaluate:
             print('Evaluation')

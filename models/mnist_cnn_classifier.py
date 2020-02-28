@@ -151,11 +151,11 @@ class MNISTCNNClassifier(VAE):
 
         z = Dense(self.latent_dimension, activation='relu')(z)
 
-        logits_layer = Dense(len(self.restriction_labels))(z)
+        logits_layer = Dense(self.number_of_clusters)(z)
 
         probability_layer = Softmax()(logits_layer)
 
-        classifier = Model(self.encoder_mnist_input, probability_layer, name='mnist_classifier')
+        classifier = Model(self.encoder_mnist_input, probability_layer, name='mnist_cnn_classifier')
         classifier.summary()
         plot_model(classifier, to_file=os.path.join(self.image_directory, 'classifier.png'), show_shapes=True)
         classifier.compile(optimizers.Adam(lr=self.learning_rate),
@@ -187,9 +187,12 @@ class MNISTCNNClassifier(VAE):
         fit_kwargs['epochs'] = self.number_of_epochs
         fit_kwargs['batch_size'] = self.batch_size
         if self.has_validation_set and self.enable_early_stopping:
-            fit_kwargs['callbacks'] = [self.early_stopping_callback, self.nan_termination_callback]
+            fit_kwargs['callbacks'] = [self.tensorboard_callback,
+                                       self.early_stopping_callback,
+                                       self.nan_termination_callback]
         else:
-            fit_kwargs['callbacks'] = [self.nan_termination_callback]
+            fit_kwargs['callbacks'] = [self.tensorboard_callback,
+                                       self.nan_termination_callback]
         if self.has_validation_set:
             fit_kwargs['validation_data'] = (self.x_val, self.y_val_binary)
         return fit_kwargs
@@ -208,7 +211,8 @@ class MNISTCNNClassifier(VAE):
             logs.begin_logging(self.experiment_directory)
         classifier, history = self.fit_classifier(alpha=alpha)
         self.print_settings()
-        plots.loss(history, self.image_directory, name=self.model_name)
+        plots.loss(history, self.image_directory)
+        plots.accuracy(history, self.image_directory)
         self.save_model_weights(classifier, 'classifier')
         if evaluate:
             print('Evaluation')

@@ -384,8 +384,8 @@ class VAE:
         Callbacks to TensorBoard for observing the model structure and network training curves.
         """
         self.tensorboard_callback = TensorBoard(log_dir=os.path.join(self.experiment_directory, 'tensorboard_logs'),
-                                                histogram_freq=2,
-                                                write_graph=True,
+                                                histogram_freq=1,
+                                                write_graph=False,
                                                 write_images=True)
 
         self.early_stopping_callback = EarlyStopping(monitor='val_loss',

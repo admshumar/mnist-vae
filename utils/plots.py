@@ -6,12 +6,14 @@ from utils import operations
 
 def plot(model_history, directory, functions, filename, plot_title, metric, x_variable, location='upper right'):
     """
-    Plot loss curves for a Keras model using MatPlotLib. (NOTE: This plots only *after* training completes. It would
-    be nice to plot concurrently with model training just in case something goes wrong, otherwise you'll get no
-    loss curves.)
     :param model_history: A dictionary of evidence_lower_bound values.
     :param directory: A string indicating the directory to which the evidence_lower_bound image is written.
+    :param functions: A set of strings indicating the functions to be plotted.
     :param filename: A string indicating a filename for the plot.
+    :param plot_title: A string indicating the title of the plot.
+    :param metric: A string indicating the label for the vertical axis.
+    :param x_variable: A string indicating the label for the horizontal axis.
+    :param location: A string indicating the location of the key in the plot.
     :return: None
     """
     filepath = os.path.join(directory, filename + '.png')
