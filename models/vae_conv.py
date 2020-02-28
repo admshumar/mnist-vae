@@ -229,7 +229,7 @@ class ConvolutionalVAE(VAE):
 
         auto_encoder, encoder, decoder, history = self.fit_autoencoder()
 
-        plots.plot_loss_curves(history, self.image_directory)
+        plots.loss(history, self.image_directory)
 
         self.save_model_weights(auto_encoder, encoder, decoder)
 

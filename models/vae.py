@@ -225,6 +225,7 @@ class VAE:
                                                                       number_of_rotations,
                                                                       angle_of_rotation)
 
+
                 self.x_train, self.y_train, self.x_val, self.y_val, self.x_test, self.y_test \
                     = x_train, y_train, x_val, y_val, x_test, y_test
 
@@ -576,7 +577,7 @@ class VAE:
         t = t1 - t0
         print(f"Variational autoencoder trained in {t} seconds.\n")
         self.print_settings()
-        plots.plot_loss_curves(history, self.image_directory)
+        plots.loss(history, self.image_directory)
         self.save_model_weights(auto_encoder, 'auto_encoder')
         self.save_model_weights(encoder, 'encoder')
         self.save_model_weights(decoder, 'decoder')

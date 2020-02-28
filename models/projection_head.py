@@ -254,7 +254,7 @@ class DenseVAEClassifier(VAE):
 
     def train_encoder_classifier(self, alpha=0):
         encoder_classifier, history = self.fit_encoder_classifier(alpha=alpha)
-        plots.plot_loss_curves(history, self.image_directory, name="losses_encoder_classifier")
+        plots.loss(history, self.image_directory, name="losses_encoder_classifier")
         self.save_model_weights(encoder_classifier, 'encoder_classifier')
         return encoder_classifier
 

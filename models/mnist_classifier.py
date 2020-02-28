@@ -127,30 +127,22 @@ class MNISTClassifier(VAE):
         z = self.encoder_mnist_input
         z = Flatten()(z)
 
-        z = Dense(self.intermediate_dimension, activation='relu')(z)
+        z = Dense(128, activation='relu')(z)
         if self.enable_batch_normalization:
             z = BatchNormalization()(z)
         if self.enable_dropout:
             z = Dropout(rate=self.dropout_rate, seed=17)(z)
 
-        z = Dense(self.intermediate_dimension // 2, activation='relu')(z)
-        if self.enable_batch_normalization:
-            z = BatchNormalization()(z)
-        if self.enable_dropout:
-            z = Dropout(rate=self.dropout_rate, seed=17)(z)
+        logits_layer = Dense(len(self.restriction_labels))(z)
 
-        z = Dense(self.latent_dimension, activation='relu')(z)
+        probability_layer = Softmax()(logits_layer)
 
-        z = Dense(len(self.restriction_labels), activation='softmax')(z)
-
-        classifier_output_layer = z
-
-        classifier = Model(self.encoder_mnist_input, classifier_output_layer, name='mnist_classifier')
+        classifier = Model(self.encoder_mnist_input, probability_layer, name='mnist_classifier')
         classifier.summary()
         plot_model(classifier, to_file=os.path.join(self.image_directory, 'classifier.png'), show_shapes=True)
         classifier.compile(optimizers.Adam(lr=self.learning_rate),
                            loss=CategoricalCrossentropy(),
-                           metrics=[Accuracy()])
+                           metrics=['accuracy'])
 
         return classifier
 
@@ -198,7 +190,7 @@ class MNISTClassifier(VAE):
             logs.begin_logging(self.experiment_directory)
         classifier, history = self.fit_classifier(alpha=alpha)
         self.print_settings()
-        plots.plot_loss_curves(history, self.image_directory, name=self.model_name)
+        plots.loss(history, self.image_directory, name=self.model_name)
         self.save_model_weights(classifier, 'classifier')
         if evaluate:
             print('Evaluation')

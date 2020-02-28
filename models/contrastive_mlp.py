@@ -560,7 +560,7 @@ class ContrastiveMLP:
 
         auto_encoder, encoder, decoder, history = self.fit_autoencoder()
 
-        plots.plot_loss_curves(history, self.image_directory)
+        plots.loss(history, self.image_directory)
 
         self.save_model_weights(auto_encoder, "auto_encoder")
         self.save_model_weights(encoder, "encoder")
@@ -579,7 +579,7 @@ class ContrastiveMLP:
 
         contrastive_mlp, history = self.fit_contrastive_mlp()
 
-        plots.plot_loss_curves(history, self.image_directory)
+        plots.loss(history, self.image_directory)
 
         self.save_model_weights(contrastive_mlp, "contrastive_mlp")
 

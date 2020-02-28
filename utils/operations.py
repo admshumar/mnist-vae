@@ -36,7 +36,7 @@ def split_gaussian_parameters(gaussian_parameters):
 
 
 def normalize(data):
-    data = data.astype('float32') / 255
+    data = data / 255.
     return data
 
 

@@ -151,16 +151,16 @@ class MNISTCNNClassifier(VAE):
 
         z = Dense(self.latent_dimension, activation='relu')(z)
 
-        z = Dense(len(self.restriction_labels), activation='softmax')(z)
+        logits_layer = Dense(len(self.restriction_labels))(z)
 
-        classifier_output_layer = z
+        probability_layer = Softmax()(logits_layer)
 
-        classifier = Model(self.encoder_mnist_input, classifier_output_layer, name='mnist_cnn_classifier')
+        classifier = Model(self.encoder_mnist_input, probability_layer, name='mnist_classifier')
         classifier.summary()
-        plot_model(classifier, to_file=os.path.join(self.image_directory, 'cnn_classifier.png'), show_shapes=True)
+        plot_model(classifier, to_file=os.path.join(self.image_directory, 'classifier.png'), show_shapes=True)
         classifier.compile(optimizers.Adam(lr=self.learning_rate),
                            loss=CategoricalCrossentropy(),
-                           metrics=[Accuracy()])
+                           metrics=['accuracy'])
 
         return classifier
 
@@ -208,7 +208,7 @@ class MNISTCNNClassifier(VAE):
             logs.begin_logging(self.experiment_directory)
         classifier, history = self.fit_classifier(alpha=alpha)
         self.print_settings()
-        plots.plot_loss_curves(history, self.image_directory, name=self.model_name)
+        plots.loss(history, self.image_directory, name=self.model_name)
         self.save_model_weights(classifier, 'classifier')
         if evaluate:
             print('Evaluation')

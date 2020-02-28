@@ -4,28 +4,35 @@ import os
 from utils import operations
 
 
-def plot_loss_curves(model_history, directory, name=None):
+def plot(model_history, directory, functions, filename, plot_title, metric, x_variable, location='upper right'):
     """
     Plot loss curves for a Keras model using MatPlotLib. (NOTE: This plots only *after* training completes. It would
     be nice to plot concurrently with model training just in case something goes wrong, otherwise you'll get no
     loss curves.)
     :param model_history: A dictionary of evidence_lower_bound values.
     :param directory: A string indicating the directory to which the evidence_lower_bound image is written.
-    :param name: A string indicating a filename for the plot.
+    :param filename: A string indicating a filename for the plot.
     :return: None
     """
-    if name is None:
-        filepath = os.path.join(directory, 'losses.png')
-    else:
-        filepath = os.path.join(directory, 'losses_'+name+'.png')
-    model_losses = {'loss', 'val_loss'}.intersection(set(model_history.history.keys()))
+    filepath = os.path.join(directory, filename + '.png')
+    model_losses = functions.intersection(set(model_history.history.keys()))
 
     fig = plt.figure(dpi=200)
     for loss in model_losses:
         plt.plot(model_history.history[loss])
-    plt.title('Model Loss')
-    plt.ylabel('Loss')
-    plt.xlabel('Epoch')
-    plt.legend(['Train', 'Val'], loc='upper right')
+    plt.title(plot_title)
+    plt.ylabel(metric)
+    plt.xlabel(x_variable)
+    plt.legend(['Train', 'Val'], loc=location)
     fig.savefig(filepath)
     plt.close(fig)
+
+
+def loss(model_history, directory):
+    plot(model_history, directory, {'loss', 'val_loss'}, 'loss', 'Model Loss', 'Loss', 'Epochs')
+
+
+def accuracy(model_history, directory):
+    plot(model_history, directory, {'acc', 'val_acc'}, 'accuracy',
+         'Model Accuracy', 'Accuracy', 'Epochs', location='lower right')
+
