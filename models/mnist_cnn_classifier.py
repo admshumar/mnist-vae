@@ -25,7 +25,6 @@ class MNISTCNNClassifier(VAE):
     MNISTClassifier inherits from class VAE, but MNISTClassifier is not a variational autoencoder. It is a vanilla
     classifier on MNIST digits.
     """
-
     def __init__(self,
                  deep=True,
                  enable_activation=True,
@@ -187,12 +186,10 @@ class MNISTCNNClassifier(VAE):
         fit_kwargs['epochs'] = self.number_of_epochs
         fit_kwargs['batch_size'] = self.batch_size
         if self.has_validation_set and self.enable_early_stopping:
-            fit_kwargs['callbacks'] = [self.tensorboard_callback,
-                                       self.early_stopping_callback,
+            fit_kwargs['callbacks'] = [self.early_stopping_callback,
                                        self.nan_termination_callback]
         else:
-            fit_kwargs['callbacks'] = [self.tensorboard_callback,
-                                       self.nan_termination_callback]
+            fit_kwargs['callbacks'] = [self.nan_termination_callback]
         if self.has_validation_set:
             fit_kwargs['validation_data'] = (self.x_val, self.y_val_binary)
         return fit_kwargs

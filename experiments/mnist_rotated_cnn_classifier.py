@@ -1,8 +1,8 @@
 from models.mnist_cnn_classifier import MNISTCNNClassifier
 
 classifier = MNISTCNNClassifier(number_of_epochs=100,
-                                is_restricted=False,
-                                restriction_labels=[0],
+                                is_restricted=True,
+                                restriction_labels=list(range(10)),
                                 has_validation_set=True,
                                 validation_size=0.5,
                                 enable_early_stopping=True,
@@ -24,5 +24,6 @@ classifier = MNISTCNNClassifier(number_of_epochs=100,
                                 smoothing_alpha=0,
                                 show=False)
 
-print(classifier.y_train_binary.shape)
+classifier.train_classifier()
+
 del classifier
