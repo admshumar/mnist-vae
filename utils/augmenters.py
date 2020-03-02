@@ -12,7 +12,13 @@ class Rotator():
         plt.imshow(image)
         plt.show()
 
-    def __init__(self, images, labels, number_of_rotations=2, angle_of_rotation=30, partition='train'):
+    def __init__(self,
+                 images,
+                 labels,
+                 number_of_rotations=2,
+                 angle_of_rotation=30,
+                 partition='train',
+                 angle_threshold=180):
         """
         A rotator comes equipped with a data set, a directory to which augmented data sets are written, and augmentation
         parameters that determine the size and character of the augmented data set.
@@ -25,6 +31,7 @@ class Rotator():
         if not os.path.exists(directory):
             os.makedirs(directory)
         self.directory = directory
+
         if images is None:
             print("No data specified. Loading MNIST training set.")
             (x, y), (_, _) = mnist.load_data()
@@ -36,30 +43,35 @@ class Rotator():
             self.labels = labels
             self.data_length = len(images)
         self.number_of_rotations = number_of_rotations
-        self.angle_of_rotation = angle_of_rotation
+        self.angle_of_rotation = min(angle_of_rotation, 180)
+        self.angle_threshold = angle_threshold
+        self.angle_set = {theta for theta in range(0, (number_of_rotations + 1) * angle_of_rotation, angle_of_rotation)
+                          if theta <= angle_threshold or theta >= 360 - angle_threshold}
+
+    def rotate(self):
+        augmentation_tuple = tuple(ndimage.rotate(self.images, theta, axes=(2, 1), reshape=False)
+                                   for theta in self.angle_set)
+        return np.concatenate(augmentation_tuple)
 
     def append_rotated_images(self):
         print(f"Augmenting data set of shape {self.images.shape}.")
         t0 = time()
-        if self.number_of_rotations is None:
-            self.number_of_rotations = 2
-        augmented_labels = np.tile(self.labels, self.number_of_rotations + 1)
-        augmentation_list = [self.images]
-        for j in range(1, self.number_of_rotations + 1):
-            theta = j * self.angle_of_rotation
-            print(f"Rotating by angle {theta}")
-            new_images = ndimage.rotate(self.images, j * self.angle_of_rotation, axes=(2, 1), reshape=False)
-            augmentation_list.append(new_images)
-        augmentation_tuple = tuple(augmentation_list)
-        augmented_data = np.concatenate(augmentation_tuple)
+        augmented_labels = np.tile(self.labels, len(self.angle_set) + 1)
+        augmented_data = self.rotate()
         t1 = time()
         t = t1 - t0
         print(f"Completed in {t} seconds.")
         return augmented_data, augmented_labels
 
     def save(self, list_of_digits):
-        images_filename = f'digits={str(list_of_digits)}_n_rot={self.number_of_rotations}_angle={self.angle_of_rotation}.npy'
-        labels_filename = f'labels={str(list_of_digits)}_n_rot={self.number_of_rotations}_angle={self.angle_of_rotation}.npy'
+        images_filename = f'digits={str(list_of_digits)}_n_rot={self.number_of_rotations}_angle={self.angle_of_rotation}'
+        labels_filename = f'labels={str(list_of_digits)}_n_rot={self.number_of_rotations}_angle={self.angle_of_rotation}'
+        if self.angle_threshold < 180:
+            images_filename += f'_threshold={self.angle_threshold}'
+            labels_filename += f'_threshold={self.angle_threshold}'
+        images_filename += '.npy'
+        labels_filename += '.npy'
+
         images_filepath = os.path.abspath(os.path.join(self.directory, images_filename))
         labels_filepath = os.path.abspath(os.path.join(self.directory, labels_filename))
         augmented_data, augmented_labels = self.append_rotated_images()
@@ -80,7 +92,7 @@ class Rotator():
 
 
 class MNISTRotator(Rotator):
-    def __init__(self, list_of_digits, number_of_rotations, angle_of_rotation, partition='train'):
+    def __init__(self, list_of_digits, number_of_rotations, angle_of_rotation, partition='train', angle_threshold=None):
         if partition == 'test':
             print("Using MNIST test data.")
             (_, _), (x, y) = mnist.load_data()
@@ -94,7 +106,12 @@ class MNISTRotator(Rotator):
         super(MNISTRotator, self).__init__(data, labels,
                                            number_of_rotations=number_of_rotations,
                                            angle_of_rotation=angle_of_rotation,
-                                           partition=partition)
+                                           partition=partition,
+                                           angle_threshold=angle_threshold)
 
     def augment(self):
         self.save(self.list_of_digits)
+
+for i in range(10):
+    rot = MNISTRotator([i], 11, 30, angle_threshold=90)
+    rot.augment()
