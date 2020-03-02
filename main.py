@@ -1,4 +1,5 @@
 from models.mnist_cnn_classifier import MNISTCNNClassifier
+import argparse
 
 beta = 1
 #for beta in [1.2, 1.4, 1.6, 1.8, 2]:

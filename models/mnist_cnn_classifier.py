@@ -158,7 +158,7 @@ class MNISTCNNClassifier(VAE):
         classifier.summary()
         plot_model(classifier, to_file=os.path.join(self.image_directory, 'classifier.png'), show_shapes=True)
         classifier.compile(optimizers.Adam(lr=self.learning_rate),
-                           loss=CategoricalCrossentropy(),
+                           loss=CategoricalCrossentropy(label_smoothing=self.alpha),
                            metrics=['accuracy'])
 
         return classifier
@@ -198,9 +198,9 @@ class MNISTCNNClassifier(VAE):
         args = self.get_fit_args()
         kwargs = self.get_fit_kwargs()
         classifier = self.define_classifier()
-        print("Training classifier.")
+        print('Training classifier.')
         history = classifier.fit(*args, **kwargs)
-        print("Classifier trained.\n")
+        print('Classifier trained.\n')
         return classifier, history
 
     def train_classifier(self, alpha=0, evaluate=True, report=True):
@@ -218,7 +218,7 @@ class MNISTCNNClassifier(VAE):
             print(result)
         if evaluate and report:
             filepath = os.path.abspath(os.path.join(self.experiment_directory, 'report.txt'))
-            report = open(filepath, "w+")
-            report.write(f"Loss: {result[0]}\nAccuracy: {result[1]}")
+            report = open(filepath, 'w+')
+            report.write(f'Loss: {result[0]}\nAccuracy: {result[1]}')
             report.close()
         return classifier
