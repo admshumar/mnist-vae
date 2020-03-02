@@ -65,7 +65,7 @@ class MNISTCNNClassifier(VAE):
                  early_stopping_delta=1,
                  beta=1,
                  smoothing_alpha=0.5,
-                 number_of_rotations=2,
+                 number_of_rotations=11,
                  angle_of_rotation=30,
                  encoder_activation='relu',
                  decoder_activation='relu',

@@ -153,7 +153,7 @@ class VAE:
                  with_logistic_regression=False,
                  with_svc=False,
                  number_of_clusters=3,
-                 restriction_labels=[1, 2, 3],
+                 restriction_labels=list(range(10)),
                  intermediate_dimension=512,
                  latent_dimension=2,
                  exponent_of_latent_space_dimension=1,
@@ -168,7 +168,7 @@ class VAE:
                  early_stopping_delta=0.01,
                  beta=1,
                  smoothing_alpha=0.5,
-                 number_of_rotations=2,
+                 number_of_rotations=11,
                  angle_of_rotation=30,
                  encoder_activation='relu',
                  decoder_activation='relu',
@@ -208,22 +208,29 @@ class VAE:
         self.lr_reduction_patience = lr_reduction_patience
 
         self.has_validation_set = has_validation_set
-        if self.is_mnist:
-            if self.has_validation_set:
+        if is_mnist:
+            if has_validation_set:
                 x_train, y_train, x_val, y_val, x_test, y_test = VAE.get_split_mnist_data()
 
-                if self.is_restricted:
+                if is_restricted:
                     x_train, y_train = operations.restrict_data_by_label(x_train, y_train, restriction_labels)
                     x_val, y_val = operations.restrict_data_by_label(x_val, y_val, restriction_labels)
                     x_test, y_test = operations.restrict_data_by_label(x_test, y_test, restriction_labels)
-
-                if enable_rotations:
-                    print("Rotations enabled!")
-                    x_train, y_train, \
-                    x_val, y_val, \
-                    x_test, y_test = VAE.get_split_rotated_mnist_data(restriction_labels,
-                                                                      number_of_rotations,
-                                                                      angle_of_rotation)
+                    if enable_rotations:
+                        print("Rotations enabled!")
+                        x_train, y_train, \
+                        x_val, y_val, \
+                        x_test, y_test = VAE.get_split_rotated_mnist_data(restriction_labels,
+                                                                          number_of_rotations,
+                                                                          angle_of_rotation)
+                else:
+                    if enable_rotations:
+                        print("Rotations enabled!")
+                        x_train, y_train, \
+                        x_val, y_val, \
+                        x_test, y_test = VAE.get_split_rotated_mnist_data(list(range(10)),
+                                                                          number_of_rotations,
+                                                                          angle_of_rotation)
 
                 self.x_train, self.y_train, self.x_val, self.y_val, self.x_test, self.y_test \
                     = x_train, y_train, x_val, y_val, x_test, y_test
@@ -232,7 +239,7 @@ class VAE:
                 self.y_val_binary = OneHotEncoder(y_val).encode()
                 self.y_test_binary = OneHotEncoder(y_test).encode()
 
-                if self.enable_label_smoothing:
+                if enable_label_smoothing:
                     self.y_train_smooth = labels.Smoother(y_train, alpha=smoothing_alpha).smooth_uniform()
                     self.y_val_smooth = labels.Smoother(y_val, alpha=smoothing_alpha).smooth_uniform()
                     self.y_test_smooth = labels.Smoother(y_test, alpha=smoothing_alpha).smooth_uniform()
@@ -240,7 +247,7 @@ class VAE:
             else:
                 (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
-                if self.is_restricted:
+                if is_restricted:
                     x_train, y_train = operations.restrict_data_by_label(x_train, y_train, restriction_labels)
                     x_test, y_test = operations.restrict_data_by_label(x_test, y_test, restriction_labels)
 
@@ -263,17 +270,17 @@ class VAE:
                 self.y_train_binary = OneHotEncoder(y_train).encode()
                 self.y_test_binary = OneHotEncoder(y_test).encode()
 
-                if self.enable_label_smoothing:
+                if enable_label_smoothing:
                     self.y_train_smooth = labels.Smoother(y_train, alpha=smoothing_alpha).smooth_uniform()
                     self.y_test_smooth = labels.Smoother(y_test, alpha=smoothing_alpha).smooth_uniform()
 
-            if self.is_restricted:
-                self.number_of_clusters = len(self.restriction_labels)
+            if is_restricted:
+                self.number_of_clusters = len(restriction_labels)
             else:
                 self.number_of_clusters = len(np.unique(y_train))
 
             self.enable_manual_clusters = enable_manual_clusters
-            if self.enable_manual_clusters:
+            if enable_manual_clusters:
                 self.number_of_clusters = number_of_clusters
 
             self.data_width, self.data_height = self.x_train.shape[1], self.x_train.shape[2]
@@ -282,7 +289,7 @@ class VAE:
 
             self.x_train = operations.normalize(self.x_train)
             self.x_test = operations.normalize(self.x_test)
-            if self.has_validation_set:
+            if has_validation_set:
                 self.x_val = operations.normalize(self.x_val)
 
             self.gaussian_train = operations.get_gaussian_parameters(self.x_train)
